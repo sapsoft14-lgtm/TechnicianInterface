@@ -236,10 +236,16 @@
 <script>
     const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbzNLvwE7Qn6i89GOzBHcFt0Xz7J0nLouU4E6fIpVl5HWg7ETj79EceKiLUHAtd7UDiH/exec";
     let currentTechSessionName = ""; let localJobsMasterArray = []; let globalTechListCache = []; let globalWorkshopListCache = [];
-    let multipleFileUploadMasterMap = {}; let openCardStateTracker = null; let backgroundPoller = null;
+    let multipleFileUploadMasterMap = {}; let openCardStateTracker = null;
+    // PERF FIX: split into two independent pollers instead of one combined 8s loop.
+    // techQueuePoller: the technician's own queue — stays fast/responsive (8s).
+    // allJobsPoller: the company-wide "Assign to Me" pending pool — only needs to be
+    // fresh every 30s, but was previously piggy-backing a full getAdminPipeline
+    // (entire Jobs sheet) call onto the same 8s loop, doubling backend load for
+    // no real benefit.
+    let techQueuePoller = null; let allJobsPoller = null;
     let currentSelectedStatusFilter = "ALL"; let metricsChartInstance = null;
     let openSubTabStateTracker = {};
-    let handedOverJobNums = new Set(); 
 
     function setDefaultDateConstraints() {
         const today = new Date();
@@ -277,10 +283,9 @@
         .then(res => res.json()).then(data => {
             if(data.success) {
                 // ── Hard-clear all previous session state before loading new tech data ──
-                clearInterval(backgroundPoller);
+                clearInterval(techQueuePoller); clearInterval(allJobsPoller);
                 localJobsMasterArray = [];
                 allJobsCache = [];
-                handedOverJobNums = new Set();
                 multipleFileUploadMasterMap = {};
                 openCardStateTracker = null;
                 openSubTabStateTracker = {};
@@ -293,7 +298,8 @@
                 currentTechSessionName = data.techName; document.getElementById('loggedTechName').innerText = currentTechSessionName;
                 document.getElementById('loginSection').style.display = "none"; document.getElementById('portalSection').style.display = "block";
                 setDefaultDateConstraints(); initMetricsChart(); loadGlobalDropdownData(); fetchTechWorkQueue(); fetchAllJobsData();
-                backgroundPoller = setInterval(() => { fetchTechWorkQueue(); fetchAllJobsData(); }, 8000);
+                techQueuePoller = setInterval(fetchTechWorkQueue, 8000);
+                allJobsPoller = setInterval(fetchAllJobsData, 30000);
             } else { 
                 document.getElementById('loginError').innerText = data.error; document.getElementById('loginError').style.display = "block"; 
             }
@@ -356,7 +362,7 @@
     }
 
     function manualJobQueueRefreshTrigger() {
-        clearInterval(backgroundPoller);
+        clearInterval(techQueuePoller);
         const refreshBtn = document.querySelector('.btn-refresh-queue');
         refreshBtn.innerText = "🔄 Syncing...";
         
@@ -369,10 +375,10 @@
             } 
             fetchAllJobsData();
             refreshBtn.innerHTML = "🔄 Refresh Task Queue";
-            backgroundPoller = setInterval(() => { fetchTechWorkQueue(); fetchAllJobsData(); }, 8000);
+            techQueuePoller = setInterval(fetchTechWorkQueue, 8000);
         }).catch(() => {
             refreshBtn.innerHTML = "🔄 Refresh Task Queue";
-            backgroundPoller = setInterval(() => { fetchTechWorkQueue(); fetchAllJobsData(); }, 8000);
+            techQueuePoller = setInterval(fetchTechWorkQueue, 8000);
         });
     }
 
@@ -387,7 +393,7 @@
         let filtered = localJobsMasterArray.filter(job => {
             const matchesStatus = (currentSelectedStatusFilter === "ALL" || job.status === currentSelectedStatusFilter);
             const matchesSearch = (!query || job.jobNum.toString().includes(query) || job.itemType.toLowerCase().includes(query) || job.customer.toLowerCase().includes(query) || job.serial.toLowerCase().includes(query));
-            const notHandedOver = !handedOverJobNums.has(job.jobNum);
+            const notHandedOver = !job.isHandedOver;
             return matchesStatus && matchesSearch && notHandedOver && (!startVal || job.createdDateIso >= startVal) && (!endVal || job.createdDateIso <= endVal);
         });
 
@@ -575,23 +581,23 @@
     function closeImageLightbox() { document.getElementById('globalLightbox').style.display = "none"; }
 
     function submitJobStatusUpdateEngine(event, jobNum) {
-        event.preventDefault(); clearInterval(backgroundPoller);
+        event.preventDefault(); clearInterval(techQueuePoller);
         const form = event.target; const status = form.getElementsByTagName('select')[0].value; const notes = form.getElementsByTagName('textarea')[0].value.trim(); const alertBox = document.getElementById(`msg-${jobNum}`);
         const totalPriceInput = document.getElementById(`totalprice-${jobNum}`);
         const totalPriceVal = totalPriceInput && totalPriceInput.value.trim() !== '' ? totalPriceInput.value.trim() : '';
         alertBox.style.display = "block"; alertBox.style.background = "#1e293b"; alertBox.style.color = "#38bdf8"; alertBox.innerText = "Uploading data matrix...";
         fetch(WEB_APP_URL, { method: 'POST', body: JSON.stringify({ action: "updateJobStatus", jobNum: jobNum, status: status, tech: currentTechSessionName, notes: notes, totalPrice: totalPriceVal, images: multipleFileUploadMasterMap[jobNum]||[] }) })
         .then(res => res.json()).then(data => {
-            if(data.success) { alertBox.style.background = "rgba(6,214,160,0.2)"; alertBox.style.color = "var(--accent-green)"; alertBox.innerText = "🎉 Status Logged Successfully!"; multipleFileUploadMasterMap[jobNum] = []; form.reset(); setTimeout(() => { document.getElementById(`body-${jobNum}`).style.display = "none"; document.getElementById(`card-${jobNum}`).classList.remove('is-open'); openCardStateTracker = null; fetchTechWorkQueue(); backgroundPoller = setInterval(fetchTechWorkQueue, 8000); }, 1200); }
+            if(data.success) { alertBox.style.background = "rgba(6,214,160,0.2)"; alertBox.style.color = "var(--accent-green)"; alertBox.innerText = "🎉 Status Logged Successfully!"; multipleFileUploadMasterMap[jobNum] = []; form.reset(); setTimeout(() => { document.getElementById(`body-${jobNum}`).style.display = "none"; document.getElementById(`card-${jobNum}`).classList.remove('is-open'); openCardStateTracker = null; fetchTechWorkQueue(); techQueuePoller = setInterval(fetchTechWorkQueue, 8000); }, 1200); }
         });
     }
 
     function executeTicketHandoverRoute(event, jobNum) {
-        event.preventDefault(); clearInterval(backgroundPoller);
+        event.preventDefault(); clearInterval(techQueuePoller);
         const form = event.target; const targetWorkshop = form.getElementsByTagName('select')[0].value; const targetTech = form.getElementsByTagName('select')[1].value; const commentVal = form.getElementsByTagName('textarea')[0].value.trim(); const alertBox = document.getElementById(`msg-${jobNum}`);
         alertBox.style.display = "block"; alertBox.style.background = "#1e293b"; alertBox.style.color = "var(--accent-orange)"; alertBox.innerText = "Re-routing card asset data lines...";
         fetch(WEB_APP_URL, { method: 'POST', body: JSON.stringify({ action: "techTransferJob", jobNum: jobNum, fromTech: currentTechSessionName, workshop: targetWorkshop, tech: targetTech, transferComment: commentVal }) })
-        .then(res => res.json()).then(data => { if(data.success) { alertBox.style.background = "rgba(255,159,28,0.2)"; alertBox.innerText = `🚀 Handed over to ${targetTech}!`; setTimeout(() => { document.getElementById(`card-${jobNum}`).remove(); openCardStateTracker = null; fetchTechWorkQueue(); backgroundPoller = setInterval(fetchTechWorkQueue, 8000); }, 1200); } });
+        .then(res => res.json()).then(data => { if(data.success) { alertBox.style.background = "rgba(255,159,28,0.2)"; alertBox.innerText = `🚀 Handed over to ${targetTech}!`; setTimeout(() => { document.getElementById(`card-${jobNum}`).remove(); openCardStateTracker = null; fetchTechWorkQueue(); techQueuePoller = setInterval(fetchTechWorkQueue, 8000); }, 1200); } });
     }
 
     function submitSerialModelEdit(event, jobNum) {
@@ -620,11 +626,10 @@
     }
 
     function logOutSession() {
-        clearInterval(backgroundPoller);
+        clearInterval(techQueuePoller); clearInterval(allJobsPoller);
         currentTechSessionName = "";
         localJobsMasterArray = [];
         allJobsCache = [];
-        handedOverJobNums = new Set();
         multipleFileUploadMasterMap = {};
         openCardStateTracker = null;
         openSubTabStateTracker = {};
@@ -652,17 +657,9 @@
         fetch(`${WEB_APP_URL}?action=getAdminPipeline`)
         .then(res => res.json()).then(data => {
             if(data.success) {
-                // DEBUG: log all unique workshop names to console
-                const workshops = [...new Set(data.jobs.map(j => j.workshop))];
-                console.log('DEBUG workshops in sheet:', JSON.stringify(workshops));
-                console.log('DEBUG pending jobs sample:', data.jobs.filter(j=>j.status==='Pending').slice(0,3).map(j=>({w:j.workshop,s:j.status,h:j.isHandedOver})));
-                // Build handed-over lookup set from all jobs so the tech queue can hide them
-                handedOverJobNums = new Set(data.jobs.filter(j => j.isHandedOver).map(j => j.jobNum));
                 // SAP14 location, Pending only, not handed over
                 allJobsCache = data.jobs.filter(j => !j.isHandedOver && j.status === 'Pending' && j.workshop === 'SAP -  Shop 14');
                 renderAllJobsPanel();
-                // Re-run the tech queue filter so handed-over cards disappear immediately
-                evaluateFilterPipeline();
             }
         }).catch(() => {});
     }
