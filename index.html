@@ -68,6 +68,7 @@
         .b-Returned { background: #b91c1c; } 
         .b-CantRepair { background: var(--accent-red); }
         .b-WarrantyClaimed { background: var(--accent-purple); }
+        .b-CustomerHold { background: var(--accent-cyan); color: #023047; }
 
         .job-card-body { display: none; padding: 16px; background: rgba(0, 0, 0, 0.2); border-top: 1px solid var(--border-color); width: 100%; }
         .grid-2 { display: grid; grid-template-columns: 1fr; gap: 12px; margin-bottom: 12px; width: 100%; }
@@ -195,6 +196,7 @@
                         <div class="filter-pill" onclick="setStatusFilter('Pending', this)">Pending</div>
                         <div class="filter-pill" onclick="setStatusFilter('Ongoing', this)">Ongoing</div>
                         <div class="filter-pill" onclick="setStatusFilter('Warranty Pending', this)">Warranty Pending</div>
+                        <div class="filter-pill" onclick="setStatusFilter('Customer Hold', this)">Customer Hold</div>
                         <div class="filter-pill" onclick="setStatusFilter('Completed', this)">Completed</div>
                         <div class="filter-pill" onclick="setStatusFilter('Cant Repair', this)">Cant Repair</div>
                         <div class="filter-pill" onclick="setStatusFilter('Returned', this)">Returned</div>
@@ -459,8 +461,10 @@
                                 <div class="form-group">
                                     <label>Action State Matrix</label>
                                     <select required>
+                                        <option value="Pending" ${job.status==='Pending'?'selected':''}>Pending</option>
                                         <option value="Ongoing" ${job.status==='Ongoing'?'selected':''}>Ongoing</option>
                                         <option value="Warranty Pending" ${job.status==='Warranty Pending'?'selected':''}>Warranty Pending</option>
+                                        <option value="Customer Hold" ${job.status==='Customer Hold'?'selected':''}>Customer Hold</option>
                                         <option value="Completed" ${job.status==='Completed'?'selected':''}>Completed</option>
                                         <option value="Cant Repair" ${job.status==='Cant Repair'?'selected':''}>Cant Repair</option>
                                         <option value="Returned" ${job.status==='Returned'?'selected':''}>Returned</option>
