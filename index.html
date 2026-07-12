@@ -119,6 +119,27 @@
         .aj-num { font-weight: 800; color: var(--accent-orange); font-size: 13px; }
         .alljobs-empty { text-align: center; color: var(--text-muted); font-size: 12px; padding: 18px 0; }
 
+        /* NEW v11.3: "Mark Customer Informed" button + running count badge */
+        .btn-informed-tech { background: rgba(0,245,212,0.12); color: var(--accent-cyan); border: 1px solid var(--accent-cyan); padding: 6px 12px; border-radius: 20px; font-size: 11px; font-weight: 700; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
+        .btn-informed-tech:hover { background: rgba(0,245,212,0.22); }
+        .btn-informed-tech:disabled { opacity: 0.6; cursor: not-allowed; }
+        .informed-badge-tech { background: var(--accent-cyan); color: #023047; border-radius: 10px; padding: 0 6px; font-size: 10px; font-weight: 800; min-width: 14px; text-align: center; }
+        .informed-last-label { font-size: 10px; color: var(--text-muted); }
+
+        /* NEW v11.3: Cross-portal notification bell + dropdown panel */
+        .notif-bell-wrap { position: relative; }
+        .btn-notif-bell { background: var(--bg-input); color: var(--accent-cyan); border: 1px solid var(--border-color); padding: 9px 12px; border-radius: 8px; cursor: pointer; font-weight: 700; font-size: 13px; position: relative; }
+        .btn-notif-bell:hover { border-color: var(--accent-cyan); }
+        .notif-badge { background: var(--accent-red); color: white; font-size: 10px; font-weight: 800; border-radius: 10px; padding: 1px 6px; position: absolute; top: -7px; right: -7px; }
+        .notif-panel { position: absolute; top: calc(100% + 8px); right: 0; width: 320px; max-width: 85vw; max-height: 420px; overflow-y: auto; background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 10px; box-shadow: 0 15px 40px rgba(0,0,0,0.45); z-index: 5000; }
+        .notif-panel-header { display: flex; justify-content: space-between; align-items: center; padding: 10px 12px; border-bottom: 1px solid var(--border-color); font-weight: bold; font-size: 12px; color: var(--accent-cyan); position: sticky; top: 0; background: var(--bg-card); }
+        .notif-panel-header button { background: var(--accent-blue); color: white; border: none; padding: 4px 10px; border-radius: 6px; font-size: 11px; cursor: pointer; font-weight: bold; }
+        .notif-item { padding: 10px 12px; border-bottom: 1px solid var(--border-color); font-size: 12px; color: var(--text-main); }
+        .notif-item.unread { background: rgba(58,134,255,0.12); }
+        .notif-item .notif-meta { display: flex; justify-content: space-between; color: var(--text-muted); font-size: 10px; margin-bottom: 3px; }
+        .notif-item .notif-note { color: var(--text-muted); margin-top: 3px; }
+        .notif-empty { text-align: center; color: var(--text-muted); font-size: 12px; padding: 22px 10px; }
+
         /* Media Breakpoint Controls */
         @media (min-width: 480px) {
             .job-card-header { flex-direction: row; align-items: center; }
@@ -173,7 +194,19 @@
     <div id="portalSection" class="portal-space">
         <div class="tech-profile-bar">
             <div>Operator: <strong id="loggedTechName" style="color:#38bdf8;">--</strong></div>
-            <button onclick="logOutSession()" class="btn">Sign Out</button>
+            <div style="display:flex; align-items:center; gap:10px;">
+                <div class="notif-bell-wrap">
+                    <button type="button" class="btn-notif-bell" onclick="toggleNotifPanel()">🔔 <span class="notif-badge" id="notifBadge" style="display:none;">0</span></button>
+                    <div class="notif-panel" id="notifPanel" style="display:none;">
+                        <div class="notif-panel-header">
+                            <span>🔔 Recent Job Updates</span>
+                            <button type="button" onclick="clearViewedNotifications()">Clear</button>
+                        </div>
+                        <div class="notif-list" id="notifList"><div class="notif-empty">Loading...</div></div>
+                    </div>
+                </div>
+                <button onclick="logOutSession()" class="btn">Sign Out</button>
+            </div>
         </div>
 
         <div class="workspace-grid">
@@ -238,7 +271,7 @@
 </div>
 
 <script>
-    const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbzNLvwE7Qn6i89GOzBHcFt0Xz7J0nLouU4E6fIpVl5HWg7ETj79EceKiLUHAtd7UDiH/exec";
+    const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbzXj72GD_dE1zH46_OK28Xgo_Z0-sBeRK4BbgwJ2nAvWMgfvr4yXCregGKi86waUxUQ/exec";
     let currentTechSessionName = ""; let localJobsMasterArray = []; let globalTechListCache = []; let globalWorkshopListCache = [];
     let multipleFileUploadMasterMap = {}; let openCardStateTracker = null;
     // PERF FIX: split into two independent pollers instead of one combined 8s loop.
@@ -247,7 +280,7 @@
     // fresh every 30s, but was previously piggy-backing a full getAdminPipeline
     // (entire Jobs sheet) call onto the same 8s loop, doubling backend load for
     // no real benefit.
-    let techQueuePoller = null; let allJobsPoller = null;
+    let techQueuePoller = null; let allJobsPoller = null; let notifPoller = null;
     let currentSelectedStatusFilter = "ALL"; let metricsChartInstance = null;
     let openSubTabStateTracker = {};
 
@@ -287,7 +320,7 @@
         .then(res => res.json()).then(data => {
             if(data.success) {
                 // ── Hard-clear all previous session state before loading new tech data ──
-                clearInterval(techQueuePoller); clearInterval(allJobsPoller);
+                clearInterval(techQueuePoller); clearInterval(allJobsPoller); clearInterval(notifPoller);
                 localJobsMasterArray = [];
                 allJobsCache = [];
                 multipleFileUploadMasterMap = {};
@@ -301,9 +334,10 @@
 
                 currentTechSessionName = data.techName; document.getElementById('loggedTechName').innerText = currentTechSessionName;
                 document.getElementById('loginSection').style.display = "none"; document.getElementById('portalSection').style.display = "block";
-                setDefaultDateConstraints(); initMetricsChart(); loadGlobalDropdownData(); fetchTechWorkQueue(); fetchAllJobsData();
+                setDefaultDateConstraints(); initMetricsChart(); loadGlobalDropdownData(); fetchTechWorkQueue(); fetchAllJobsData(); fetchNotifications();
                 techQueuePoller = setInterval(fetchTechWorkQueue, 8000);
                 allJobsPoller = setInterval(fetchAllJobsData, 30000);
+                notifPoller = setInterval(fetchNotifications, 25000);
             } else { 
                 document.getElementById('loginError').innerText = data.error; document.getElementById('loginError').style.display = "block"; 
             }
@@ -447,6 +481,12 @@
                         <div style="color: var(--accent-red); font-weight: 800; margin-top: 4px; font-size: 12.5px;">⚠️ Fault: ${job.fault || 'Not Specified'}</div>
                         ${job.estimatePrice !== '' && job.estimatePrice != null ? `<div style="color: var(--accent-orange); font-weight: 700; margin-top: 3px; font-size: 12px;">💰 Estimate: Rs. ${job.estimatePrice}</div>` : ''}
                         ${job.totalPrice !== '' && job.totalPrice != null ? `<div style="color: var(--accent-green); font-weight: 700; margin-top: 3px; font-size: 12px;">✅ Total Charged: Rs. ${job.totalPrice}</div>` : ''}
+                        <div style="margin-top:8px; display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                            <button type="button" id="informedBtn-${job.jobNum}" class="btn-informed-tech" onclick="event.stopPropagation(); markCustomerInformedSubmit(${job.jobNum}, this)">
+                                📣 Informed${job.informedCount ? ` <span class="informed-badge-tech">${job.informedCount}</span>` : ''}
+                            </button>
+                            <span class="informed-last-label" id="informedLastLabel-${job.jobNum}">${job.informedLastDate ? `Last: ${job.informedLastDate}` : ''}</span>
+                        </div>
                     </span>
                     <span class="status-badge b-${job.status.replace(/\s+/g, '')}">${job.status}</span>
                 </div>
@@ -558,6 +598,114 @@
         document.getElementById(`tabL-${jobNum}-hs`).classList.toggle('active', module === 'history');
         if(module === 'history') loadJobHistoryTimeline(jobNum);
     }
+
+    // NEW v11.3: "Mark Customer Informed" — increments the count + timestamp
+    // every time it's clicked, so the badge climbs 1, 2, 3... on repeat taps.
+    // Patches just this one card's button/label in place instead of doing a
+    // full re-render, so an already-open card doesn't collapse or lose state.
+    function markCustomerInformedSubmit(jobNum, btnEl) {
+        if (btnEl) btnEl.disabled = true;
+        fetch(WEB_APP_URL, {
+            method: 'POST',
+            body: JSON.stringify({ action: "markCustomerInformed", jobNum: jobNum, tech: currentTechSessionName })
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.success) {
+                const job = localJobsMasterArray.find(j => j.jobNum === jobNum);
+                if (job) { job.informedCount = data.informedCount; job.informedLastDate = data.informedLastDate; }
+                const aj = allJobsCache.find(j => j.jobNum === jobNum);
+                if (aj) { aj.informedCount = data.informedCount; aj.informedLastDate = data.informedLastDate; }
+                updateInformedUiForJob(jobNum, data.informedCount, data.informedLastDate);
+                fetchNotifications();
+            } else {
+                alert('Could not update: ' + (data.error || 'Unknown error.'));
+            }
+        })
+        .catch(() => alert('Network error while updating customer-informed status.'))
+        .finally(() => { if (btnEl) btnEl.disabled = false; });
+    }
+
+    function updateInformedUiForJob(jobNum, count, lastDate) {
+        const btn = document.getElementById(`informedBtn-${jobNum}`);
+        if (btn) btn.innerHTML = `📣 Informed${count ? ` <span class="informed-badge-tech">${count}</span>` : ''}`;
+        const label = document.getElementById(`informedLastLabel-${jobNum}`);
+        if (label) label.innerText = lastDate ? `Last: ${lastDate}` : '';
+    }
+
+    // ── Notification Bell (v11.3, NEW) ──────────────────────────────────────
+    // Reads the shared getNotifications feed (built from StatusLogs on the
+    // backend) and tracks "cleared up to id X" locally via localStorage, so
+    // viewing/clearing never deletes real data and each device keeps its
+    // own read state. Uses the same storage key as the Admin dashboard, so
+    // if both are opened on the same device/browser their read-state stays
+    // in sync automatically.
+    const NOTIF_DISMISS_KEY = 'sap_notif_last_cleared_id';
+    let notifFeedCache = [];
+
+    function getLastClearedNotifId() {
+        return Number(localStorage.getItem(NOTIF_DISMISS_KEY)) || 0;
+    }
+
+    function fetchNotifications() {
+        fetch(`${WEB_APP_URL}?action=getNotifications`)
+        .then(res => res.json())
+        .then(data => { if (data.success) { notifFeedCache = data.notifications; renderNotifPanel(); } })
+        .catch(() => {});
+    }
+
+    function formatNotifTime(ts) {
+        try {
+            const d = new Date(ts);
+            if (isNaN(d.getTime())) return ts;
+            return d.toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+        } catch (e) { return ts; }
+    }
+
+    function renderNotifPanel() {
+        const lastCleared = getLastClearedNotifId();
+        const unreadCount = notifFeedCache.filter(n => n.id > lastCleared).length;
+        const badge = document.getElementById('notifBadge');
+        if (badge) {
+            if (unreadCount > 0) { badge.style.display = 'inline-block'; badge.innerText = unreadCount > 99 ? '99+' : unreadCount; }
+            else { badge.style.display = 'none'; }
+        }
+
+        const list = document.getElementById('notifList');
+        if (!list) return;
+        if (notifFeedCache.length === 0) { list.innerHTML = '<div class="notif-empty">No recent updates.</div>'; return; }
+
+        list.innerHTML = notifFeedCache.map(n => `
+            <div class="notif-item ${n.id > lastCleared ? 'unread' : ''}">
+                <div class="notif-meta"><span>Job #${n.jobNum}</span><span>${formatNotifTime(n.timestamp)}</span></div>
+                <div><strong>${n.status}</strong> — ${n.operator || ''}</div>
+                <div class="notif-note">${n.note || ''}</div>
+            </div>`).join('');
+    }
+
+    function toggleNotifPanel() {
+        const panel = document.getElementById('notifPanel');
+        const willOpen = panel.style.display === 'none';
+        panel.style.display = willOpen ? 'block' : 'none';
+        if (willOpen) fetchNotifications();
+    }
+
+    // "View it, then clear it" — clearing just moves the local watermark up
+    // to the newest id currently loaded; it does not touch the spreadsheet.
+    function clearViewedNotifications() {
+        if (notifFeedCache.length > 0) {
+            const maxId = Math.max(...notifFeedCache.map(n => n.id));
+            localStorage.setItem(NOTIF_DISMISS_KEY, maxId);
+        }
+        renderNotifPanel();
+    }
+
+    document.addEventListener('click', function (e) {
+        const wrap = document.querySelector('.notif-bell-wrap');
+        const panel = document.getElementById('notifPanel');
+        if (wrap && panel && !wrap.contains(e.target)) { panel.style.display = 'none'; }
+    });
+    // ─────────────────────────────────────────────────────────────────────────
 
     /**
  * IMAGE COMPRESSION PATCH — technician-terminal.html
@@ -726,7 +874,7 @@ function handleMultiImageProcessing(inputElement, jobNum) {
     }
 
     function logOutSession() {
-        clearInterval(techQueuePoller); clearInterval(allJobsPoller);
+        clearInterval(techQueuePoller); clearInterval(allJobsPoller); clearInterval(notifPoller);
         currentTechSessionName = "";
         localJobsMasterArray = [];
         allJobsCache = [];
