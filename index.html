@@ -145,6 +145,7 @@
         .notif-panel { position: absolute; top: calc(100% + 8px); right: 0; width: 320px; max-width: 85vw; max-height: 420px; overflow-y: auto; background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 10px; box-shadow: 0 15px 40px rgba(0,0,0,0.45); z-index: 5000; }
         .notif-panel-header { display: flex; justify-content: space-between; align-items: center; padding: 10px 12px; border-bottom: 1px solid var(--border-color); font-weight: bold; font-size: 12px; color: var(--accent-cyan); position: sticky; top: 0; background: var(--bg-card); }
         .notif-panel-header button { background: var(--accent-blue); color: white; border: none; padding: 4px 10px; border-radius: 6px; font-size: 11px; cursor: pointer; font-weight: bold; }
+        #desktopNotifToggleBtn.notif-desktop-on { background: var(--accent-green); }
         .notif-item { padding: 10px 12px; border-bottom: 1px solid var(--border-color); font-size: 12px; color: var(--text-main); }
         .notif-item.unread { background: rgba(58,134,255,0.12); }
         .notif-item .notif-meta { display: flex; justify-content: space-between; color: var(--text-muted); font-size: 10px; margin-bottom: 3px; }
@@ -220,7 +221,10 @@
                     <div class="notif-panel" id="notifPanel" style="display:none;">
                         <div class="notif-panel-header">
                             <span>🔔 Recent Job Updates</span>
-                            <button type="button" onclick="clearViewedNotifications()">Clear</button>
+                            <div style="display:flex; gap:6px;">
+                                <button type="button" id="desktopNotifToggleBtn" onclick="toggleDesktopNotifications()" title="Get these updates as Chrome desktop notifications">🖥️ Off</button>
+                                <button type="button" onclick="clearViewedNotifications()">Clear</button>
+                            </div>
                         </div>
                         <div class="notif-list" id="notifList"><div class="notif-empty">Loading...</div></div>
                     </div>
@@ -382,7 +386,7 @@
 
                 currentTechSessionName = data.techName; document.getElementById('loggedTechName').innerText = currentTechSessionName;
                 document.getElementById('loginSection').style.display = "none"; document.getElementById('portalSection').style.display = "block";
-                setDefaultDateConstraints(); initMetricsChart(); loadGlobalDropdownData(); fetchTechWorkQueue(); fetchAllJobsData(); fetchNotifications();
+                setDefaultDateConstraints(); initMetricsChart(); loadGlobalDropdownData(); fetchTechWorkQueue(); fetchAllJobsData(); fetchNotifications(); initDesktopNotificationsDefault();
                 techQueuePoller = setInterval(fetchTechWorkQueue, 8000);
                 allJobsPoller = setInterval(fetchAllJobsData, 30000);
                 notifPoller = setInterval(fetchNotifications, 25000);
@@ -726,8 +730,116 @@
     function fetchNotifications() {
         fetch(`${WEB_APP_URL}?action=getNotifications`)
         .then(res => res.json())
-        .then(data => { if (data.success) { notifFeedCache = data.notifications; renderNotifPanel(); } })
+        .then(data => { if (data.success) { notifFeedCache = data.notifications; renderNotifPanel(); maybeFireDesktopNotifications(notifFeedCache); } })
         .catch(() => {});
+    }
+
+    // ── Chrome Desktop Notifications (default ON) ───────────────────────────
+    // Uses the browser's native Notification API. Enabled by default — on
+    // login, Chrome is asked for permission automatically (unless the
+    // technician already answered, or explicitly turned this off before).
+    // The "🖥️" button lets a technician turn it off/back on manually.
+    // A separate watermark (from the panel's "Clear" watermark) tracks which
+    // ids have already been pushed as a desktop popup, so re-opening the
+    // dropdown never re-fires old alerts.
+    const DESKTOP_NOTIF_ENABLED_KEY = 'sap_notif_desktop_enabled';
+    const DESKTOP_NOTIF_LASTID_KEY = 'sap_notif_desktop_last_id';
+
+    function isDesktopNotifEnabled() {
+        // Default ON: only OFF if the technician explicitly disabled it.
+        const explicitlyOff = localStorage.getItem(DESKTOP_NOTIF_ENABLED_KEY) === '0';
+        return !explicitlyOff
+            && typeof Notification !== 'undefined' && Notification.permission === 'granted';
+    }
+
+    // Prompts for permission automatically on login (unless the technician
+    // already answered before, or already explicitly turned this off).
+    function initDesktopNotificationsDefault() {
+        if (typeof Notification === 'undefined') return;
+        if (localStorage.getItem(DESKTOP_NOTIF_ENABLED_KEY) === '0') { updateDesktopNotifBtnUI(); return; }
+        if (Notification.permission === 'default') {
+            Notification.requestPermission().then(function (perm) {
+                if (perm === 'granted' && notifFeedCache.length > 0) {
+                    localStorage.setItem(DESKTOP_NOTIF_LASTID_KEY, String(Math.max(...notifFeedCache.map(n => n.id))));
+                }
+                updateDesktopNotifBtnUI();
+            });
+        } else {
+            updateDesktopNotifBtnUI();
+        }
+    }
+
+    function getDesktopNotifLastId() {
+        return Number(localStorage.getItem(DESKTOP_NOTIF_LASTID_KEY)) || 0;
+    }
+
+    function updateDesktopNotifBtnUI() {
+        const btn = document.getElementById('desktopNotifToggleBtn');
+        if (!btn) return;
+        const on = isDesktopNotifEnabled();
+        btn.textContent = on ? '🖥️ On' : '🖥️ Off';
+        btn.classList.toggle('notif-desktop-on', on);
+    }
+
+    function toggleDesktopNotifications() {
+        if (typeof Notification === 'undefined') {
+            alert('This browser does not support desktop notifications.');
+            return;
+        }
+        const currentlyOn = isDesktopNotifEnabled();
+        if (currentlyOn) {
+            localStorage.setItem(DESKTOP_NOTIF_ENABLED_KEY, '0');
+            updateDesktopNotifBtnUI();
+            return;
+        }
+        if (Notification.permission === 'granted') {
+            localStorage.setItem(DESKTOP_NOTIF_ENABLED_KEY, '1');
+            // Don't backfill alerts for updates that already happened — start
+            // the watermark at the newest id currently loaded.
+            if (notifFeedCache.length > 0) {
+                localStorage.setItem(DESKTOP_NOTIF_LASTID_KEY, String(Math.max(...notifFeedCache.map(n => n.id))));
+            }
+            updateDesktopNotifBtnUI();
+        } else if (Notification.permission === 'denied') {
+            alert('Desktop notifications are blocked for this site. Enable them in Chrome\'s site settings (padlock icon → Notifications) to turn this on.');
+        } else {
+            Notification.requestPermission().then(function (perm) {
+                if (perm === 'granted') {
+                    localStorage.removeItem(DESKTOP_NOTIF_ENABLED_KEY);
+                    if (notifFeedCache.length > 0) {
+                        localStorage.setItem(DESKTOP_NOTIF_LASTID_KEY, String(Math.max(...notifFeedCache.map(n => n.id))));
+                    }
+                }
+                updateDesktopNotifBtnUI();
+            });
+        }
+    }
+
+    function maybeFireDesktopNotifications(list) {
+        if (!isDesktopNotifEnabled() || !Array.isArray(list) || list.length === 0) return;
+        const lastId = getDesktopNotifLastId();
+        const fresh = list.filter(n => n.id > lastId).sort((a, b) => a.id - b.id);
+        if (fresh.length === 0) return;
+
+        // Cap how many popups fire at once (e.g. after being away for a while)
+        // so the technician isn't hit with a wall of notifications.
+        const toShow = fresh.slice(-5);
+        toShow.forEach(n => {
+            try {
+                const notif = new Notification(`Job #${n.jobNum} — ${n.status || 'Update'}`, {
+                    body: n.note || (n.operator ? `Updated by ${n.operator}` : 'Tap to view details.'),
+                    tag: 'sap-job-' + n.id
+                });
+                notif.onclick = function () {
+                    window.focus();
+                    const panel = document.getElementById('notifPanel');
+                    if (panel) panel.style.display = 'block';
+                    notif.close();
+                };
+            } catch (e) { /* ignore individual popup failures */ }
+        });
+
+        localStorage.setItem(DESKTOP_NOTIF_LASTID_KEY, String(Math.max(...fresh.map(n => n.id))));
     }
 
     function formatNotifTime(ts) {
