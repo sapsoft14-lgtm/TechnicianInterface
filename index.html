@@ -7,10 +7,20 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         :root {
-            --bg-main: #0b1329; --bg-card: #1c2541; --bg-input: #0b1329;
+            --bg-main: #0b1329; --bg-card: #1c2541; --bg-input: #0b1329; --bg-header-alt: #1a2a4a;
             --accent-blue: #3a86ff; --accent-green: #06d6a0; --accent-orange: #ff9f1c;
             --accent-red: #ef476f; --accent-purple: #8338ec; --accent-cyan: #00f5d4;
             --text-main: #f8fafc; --text-muted: #94a3b8; --border-color: #334155;
+        }
+
+        /* Light theme override — applied via data-theme="light" on <html>.
+           Accent colors stay the same (badges/buttons already rely on them
+           for contrast against white text); only surfaces/text/borders change. */
+        html[data-theme="light"] {
+            --bg-main: #f1f5f9; --bg-card: #ffffff; --bg-input: #f8fafc; --bg-header-alt: #e2e8f0;
+            --accent-blue: #2563eb; --accent-green: #059669; --accent-orange: #d97706;
+            --accent-red: #dc2626; --accent-purple: #7c3aed; --accent-cyan: #0891b2;
+            --text-main: #0f172a; --text-muted: #64748b; --border-color: #e2e8f0;
         }
         
         /* Core Reset & Anti-Squeeze Viewport Rules */
@@ -28,7 +38,7 @@
         
         .form-group { display: flex; flex-direction: column; margin-bottom: 14px; width: 100%; }
         label { font-size: 11px; font-weight: 700; margin-bottom: 4px; color: var(--text-muted); text-transform: uppercase; }
-        input, select, textarea { padding: 12px; border: 1px solid var(--border-color); border-radius: 8px; font-size: 14px; background-color: var(--bg-input); color: white; width: 100% !important; max-width: 100% !important; display: block; -webkit-appearance: none; }
+        input, select, textarea { padding: 12px; border: 1px solid var(--border-color); border-radius: 8px; font-size: 14px; background-color: var(--bg-input); color: var(--text-main); width: 100% !important; max-width: 100% !important; display: block; -webkit-appearance: none; }
         
         /* Interactive Elements */
         .btn { display: inline-flex; align-items: center; justify-content: center; background-color: var(--accent-blue); color: white; padding: 12px; border: none; border-radius: 8px; cursor: pointer; font-weight: 700; text-transform: uppercase; font-size: 13px; gap: 8px; transition: opacity 0.2s; max-width: 100%; }
@@ -104,7 +114,7 @@
 
         /* ── SAP14 Pending Jobs Panel ── */
         .alljobs-panel { background: var(--bg-card); border-radius: 14px; border: 1px solid var(--border-color); overflow: hidden; width: 100%; }
-        .alljobs-header { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; background: #1a2a4a; cursor: pointer; user-select: none; }
+        .alljobs-header { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; background: var(--bg-header-alt); cursor: pointer; user-select: none; }
         .alljobs-header h2 { margin: 0; font-size: 14px; color: var(--text-main); border: none; padding: 0; }
         .alljobs-toggle { font-size: 14px; color: var(--text-muted); transition: transform 0.25s; }
         .alljobs-toggle.open { transform: rotate(180deg); }
@@ -117,6 +127,7 @@
         .aj-item { background: var(--bg-input); border: 1px solid var(--border-color); border-radius: 8px; padding: 9px 11px; font-size: 12px; }
         .aj-item:hover { border-color: var(--accent-orange); }
         .aj-num { font-weight: 800; color: var(--accent-orange); font-size: 13px; }
+        .workshop-badge { display: inline-block; margin-top: 6px; background: var(--bg-input); border: 1px solid var(--border-color); color: var(--text-muted); font-size: 10.5px; font-weight: 700; padding: 3px 9px; border-radius: 12px; }
         .alljobs-empty { text-align: center; color: var(--text-muted); font-size: 12px; padding: 18px 0; }
 
         /* NEW v11.3: "Mark Customer Informed" button + running count badge */
@@ -139,6 +150,11 @@
         .notif-item .notif-meta { display: flex; justify-content: space-between; color: var(--text-muted); font-size: 10px; margin-bottom: 3px; }
         .notif-item .notif-note { color: var(--text-muted); margin-top: 3px; }
         .notif-empty { text-align: center; color: var(--text-muted); font-size: 12px; padding: 22px 10px; }
+
+        /* Theme toggle */
+        .theme-toggle-wrap { position: fixed; top: 12px; right: 12px; z-index: 6000; }
+        .btn-theme-toggle { background: var(--bg-card); color: var(--text-main); border: 1px solid var(--border-color); padding: 8px 12px; border-radius: 20px; cursor: pointer; font-weight: 700; font-size: 12px; display: inline-flex; align-items: center; gap: 6px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
+        .btn-theme-toggle:hover { border-color: var(--accent-blue); }
 
         /* Media Breakpoint Controls */
         @media (min-width: 480px) {
@@ -176,6 +192,10 @@
     </style>
 </head>
 <body>
+
+<div class="theme-toggle-wrap">
+    <button type="button" id="themeToggleBtn" class="btn-theme-toggle" onclick="toggleTheme()">🌙 <span id="themeToggleLabel">Dark</span></button>
+</div>
 
 <div class="container">
     <div id="loginSection" class="login-card">
@@ -272,7 +292,35 @@
 
 <script>
     const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbytDEJQNBfn1shoA5Ig5y8I1Vc4WzjuY6C451Pdte-MGZj93CcpAjUwyI050ss6cbs1/exec";
-    let currentTechSessionName = ""; let localJobsMasterArray = []; let globalTechListCache = []; let globalWorkshopListCache = [];
+
+    // ── Light / Dark theme (v11.4) ───────────────────────────────────────
+    // Preference is stored in localStorage so it survives reloads/logins.
+    // Applied on <html> via data-theme so every CSS var swap in the
+    // stylesheet cascades automatically — no per-element JS needed.
+    const THEME_STORAGE_KEY = "smpro_theme_preference";
+
+    function applyTheme(theme) {
+        document.documentElement.setAttribute('data-theme', theme);
+        const label = document.getElementById('themeToggleLabel');
+        const btn = document.getElementById('themeToggleBtn');
+        if (label) label.textContent = theme === 'light' ? 'Light' : 'Dark';
+        if (btn) btn.firstChild.textContent = theme === 'light' ? '☀️ ' : '🌙 ';
+    }
+
+    function toggleTheme() {
+        const current = document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark';
+        const next = current === 'light' ? 'dark' : 'light';
+        try { localStorage.setItem(THEME_STORAGE_KEY, next); } catch (e) { /* storage unavailable — theme just won't persist */ }
+        applyTheme(next);
+    }
+
+    (function initTheme() {
+        var saved = 'dark';
+        try { saved = localStorage.getItem(THEME_STORAGE_KEY) || 'dark'; } catch (e) { /* ignore, default to dark */ }
+        applyTheme(saved);
+    })();
+
+    let currentTechSessionName = ""; let localJobsMasterArray = []; let globalTechListCache = []; let globalWorkshopListCache = []; let dropdownDataLoaded = false;
     let multipleFileUploadMasterMap = {}; let openCardStateTracker = null;
     // PERF FIX: split into two independent pollers instead of one combined 8s loop.
     // techQueuePoller: the technician's own queue — stays fast/responsive (8s).
@@ -354,15 +402,42 @@
     });
 
     function loadGlobalDropdownData() { 
-        fetch(`${WEB_APP_URL}?action=getDropdownDataMatrices`)
+        return fetch(`${WEB_APP_URL}?action=getDropdownDataMatrices`)
         .then(res => res.json())
         .then(data => { 
             if(data.success) { 
                 globalTechListCache = data.technicians || []; 
                 globalWorkshopListCache = data.workshops || []; 
-                if(openCardStateTracker !== null) { evaluateFilterPipeline(); }
+                dropdownDataLoaded = true;
+                // Refresh the tech/workshop <select> options on any cards that were
+                // already built (e.g. if fetchTechWorkQueue's response happened to
+                // arrive before this one), regardless of whether a card is open.
+                // Cards currently open are left alone so we don't clobber a value
+                // the technician is mid-way through selecting.
+                refreshDropdownOptionsOnExistingCards();
             } 
         }).catch(err => console.log("Dropdown Data Pipeline Error: ", err));
+    }
+
+    // Re-populates the technician / workshop <select> elements on job cards
+    // that were rendered before globalTechListCache / globalWorkshopListCache
+    // were populated, so names never end up permanently stuck blank.
+    function refreshDropdownOptionsOnExistingCards() {
+        document.querySelectorAll('.job-card').forEach(cardEl => {
+            if (cardEl.classList.contains('is-open')) return; // don't disturb an in-progress edit
+            const techSelect = cardEl.querySelector('select.target-tech-select');
+            const workshopSelect = cardEl.querySelector('select.target-workshop-select');
+            if (techSelect && techSelect.options.length <= 1) {
+                let techOptionsHtml = `<option value="">Select Target Tech Handle</option>`;
+                globalTechListCache.forEach(tName => { techOptionsHtml += `<option value="${tName}">${tName}</option>`; });
+                techSelect.innerHTML = techOptionsHtml;
+            }
+            if (workshopSelect && workshopSelect.options.length <= 1) {
+                let workshopOptionsHtml = `<option value="">Select Destination Workshop</option>`;
+                globalWorkshopListCache.forEach(wName => { workshopOptionsHtml += `<option value="${wName}">${wName}</option>`; });
+                workshopSelect.innerHTML = workshopOptionsHtml;
+            }
+        });
     }
     
     function initMetricsChart() {
@@ -489,6 +564,7 @@
                         </div>
                     </span>
                     <span class="status-badge b-${job.status.replace(/\s+/g, '')}">${job.status}</span>
+                    <div class="workshop-badge" title="Assigned Workshop">🏭 ${job.workshop || 'Unassigned'}</div>
                 </div>
                 <div class="job-card-body" id="body-${job.jobNum}">
                     <div class="tab-nav">
@@ -534,11 +610,11 @@
                             <div class="grid-2">
                                 <div class="form-group">
                                     <label>Destination Workshop Floor</label>
-                                    <select required>${workshopOptionsHtml}</select>
+                                    <select required class="target-workshop-select">${workshopOptionsHtml}</select>
                                 </div>
                                 <div class="form-group">
                                     <label>Target Technician Hand</label>
-                                    <select required>${techOptionsHtml}</select>
+                                    <select required class="target-tech-select">${techOptionsHtml}</select>
                                 </div>
                             </div>
                             <div class="form-group" style="margin-top: 5px;">
@@ -933,6 +1009,7 @@ function handleMultiImageProcessing(inputElement, jobNum) {
                     <span style="font-size:10px; color:var(--text-muted);">${(job.createdTime||'').slice(0,10)}</span>
                 </div>
                 <div style="margin-top:3px;"><strong style="font-size:12px;">${job.itemType}</strong>${job.model ? ` <span style="color:var(--accent-cyan); font-size:11px; font-weight:700;">${job.model}</span>` : ''} <span style="color:var(--text-muted); font-size:11px;">— ${job.customer||''}</span></div>
+                <div class="workshop-badge" title="Assigned Workshop">🏭 ${job.workshop || 'Unassigned'}</div>
                 <div style="font-size:11px; color:#ef476f; font-weight:700; margin-top:2px;">⚠️ ${job.fault||'No fault noted'}</div>
                 <div style="font-size:11px; color:var(--text-muted); margin-top:2px;">📞 ${job.mobile||'N/A'}</div>
                 <button onclick="assignJobToSelf(${job.jobNum})" style="margin-top:8px; width:100%; padding:7px; background:var(--accent-green); color:white; border:none; border-radius:7px; font-size:12px; font-weight:700; cursor:pointer;">✅ Assign to Me</button>
