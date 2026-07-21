@@ -569,8 +569,35 @@
                 || String(job.serial || '').toLowerCase().includes(query)
                 || String(job.model || '').toLowerCase().includes(query));
             const notHandedOver = !job.isHandedOver;
-            return matchesStatus && matchesSearch && notHandedOver && (!startVal || job.createdDateIso >= startVal) && (!endVal || job.createdDateIso <= endVal);
+            // If the tech is actively searching for something (job #, customer,
+            // serial, etc.), don't let the Date From/To window hide the result —
+            // a direct search should always be able to find the job even if it
+            // falls outside the currently selected date range.
+            const withinDateRange = query
+                ? true
+                : ((!startVal || job.createdDateIso >= startVal) && (!endVal || job.createdDateIso <= endVal));
+            return matchesStatus && matchesSearch && notHandedOver && withinDateRange;
         });
+
+        // ── Defensive de-dup ──────────────────────────────────────────────
+        // Each job card is keyed by jobNum (`card-${job.jobNum}`), so if the
+        // same jobNum appears twice in the data (e.g. a duplicated row in the
+        // Jobs sheet), the second copy silently collapses onto the first
+        // card instead of creating a new one — the "Active Items in View"
+        // count would then be higher than the number of cards actually
+        // rendered. Dedupe here so the count always matches what's on
+        // screen, and log a warning so a duplicate row in the sheet can be
+        // tracked down and cleaned up at the source.
+        const seenJobNums = new Set();
+        const duplicateJobNums = new Set();
+        filtered = filtered.filter(job => {
+            if (seenJobNums.has(job.jobNum)) { duplicateJobNums.add(job.jobNum); return false; }
+            seenJobNums.add(job.jobNum);
+            return true;
+        });
+        if (duplicateJobNums.size > 0) {
+            console.warn('Duplicate job number(s) detected in the Jobs sheet — please check and remove the duplicate row(s):', Array.from(duplicateJobNums));
+        }
 
         document.getElementById('visibleJobsCount').innerText = filtered.length;
         if(filtered.length === 0) { container.innerHTML = `<div style="text-align:center; color:var(--text-muted); padding:20px;">No matching records within this timeline window.</div>`; return; }
@@ -686,11 +713,11 @@
                             <div class="grid-2">
                                 <div class="form-group">
                                     <label>Model Name</label>
-                                    <input type="text" id="edit-model-${job.jobNum}" value="${(job.model||'').replace(/"/g,'&quot;')}" placeholder="Enter model name..." required>
+                                    <input type="text" id="edit-model-${job.jobNum}" value="${String(job.model||'').replace(/"/g,'&quot;')}" placeholder="Enter model name..." required>
                                 </div>
                                 <div class="form-group">
                                     <label>Serial Number</label>
-                                    <input type="text" id="edit-serial-${job.jobNum}" value="${(job.serial||'').replace(/"/g,'&quot;')}" placeholder="Enter serial number...">
+                                    <input type="text" id="edit-serial-${job.jobNum}" value="${String(job.serial||'').replace(/"/g,'&quot;')}" placeholder="Enter serial number...">
                                 </div>
                             </div>
                             <button type="submit" class="btn" style="background:var(--accent-purple); width:100%; margin-top:4px;">💾 Save Changes</button>
