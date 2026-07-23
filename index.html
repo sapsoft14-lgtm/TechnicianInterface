@@ -166,6 +166,43 @@
         .btn-theme-toggle { background: var(--bg-card); color: var(--text-main); border: 1px solid var(--border-color); padding: 8px 12px; border-radius: 20px; cursor: pointer; font-weight: 700; font-size: 12px; display: inline-flex; align-items: center; gap: 6px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
         .btn-theme-toggle:hover { border-color: var(--accent-blue); }
 
+        /* ── Team & Recognition Panel (leaderboard / badges / kudos) ── */
+        .team-panel { background: var(--bg-card); border-radius: 14px; border: 1px solid var(--border-color); overflow: hidden; width: 100%; }
+        .team-header { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; background: var(--bg-header-alt); cursor: pointer; user-select: none; }
+        .team-header h2 { margin: 0; font-size: 14px; color: var(--text-main); border: none; padding: 0; }
+        .team-toggle { font-size: 14px; color: var(--text-muted); transition: transform 0.25s; }
+        .team-toggle.open { transform: rotate(180deg); }
+        .team-body { display: none; padding: 12px; }
+        .team-body.open { display: block; }
+        .btn-team-bell { background: rgba(255,159,28,0.12); color: var(--accent-orange); border: 1px solid var(--accent-orange); padding: 9px 12px; border-radius: 8px; cursor: pointer; font-weight: 700; font-size: 13px; }
+
+        .team-tab-content { display: none; }
+        .team-tab-content.active { display: block; }
+
+        .stat-mini-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px; }
+        .stat-mini-card { background: var(--bg-input); border: 1px solid var(--border-color); border-radius: 10px; padding: 10px; text-align: center; }
+        .stat-mini-value { font-size: 20px; font-weight: 800; color: var(--accent-blue); }
+        .stat-mini-label { font-size: 10px; color: var(--text-muted); text-transform: uppercase; font-weight: 700; margin-top: 2px; }
+
+        .badge-chip-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+        .badge-chip { display: inline-flex; align-items: center; gap: 6px; background: var(--bg-input); border: 1px solid var(--accent-orange); color: var(--text-main); padding: 6px 10px; border-radius: 20px; font-size: 11px; font-weight: 700; }
+        .badge-chip .b-icon { font-size: 14px; }
+        .badge-empty-note { font-size: 11px; color: var(--text-muted); margin-top: 8px; }
+
+        .lb-row { display: flex; align-items: center; gap: 10px; padding: 9px 10px; border-radius: 8px; background: var(--bg-input); border: 1px solid var(--border-color); margin-bottom: 6px; font-size: 12px; }
+        .lb-row.is-me { border-color: var(--accent-blue); background: rgba(58,134,255,0.12); }
+        .lb-rank { font-weight: 800; width: 22px; text-align: center; flex-shrink: 0; font-size: 13px; }
+        .lb-rank.medal-1 { color: #ffd166; } .lb-rank.medal-2 { color: #c0c0c0; } .lb-rank.medal-3 { color: #cd7f32; }
+        .lb-name { flex: 1; min-width: 0; font-weight: 700; color: var(--text-main); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .lb-stats { display: flex; gap: 10px; flex-shrink: 0; color: var(--text-muted); font-size: 11px; }
+        .lb-stats strong { color: var(--accent-green); }
+
+        .kudos-form { display: flex; flex-direction: column; gap: 8px; margin-bottom: 14px; padding-bottom: 14px; border-bottom: 1px solid var(--border-color); }
+        .kudos-item { background: var(--bg-input); border-left: 3px solid var(--accent-orange); border-radius: 8px; padding: 10px 12px; margin-bottom: 8px; font-size: 12px; }
+        .kudos-item .kudos-meta { display: flex; justify-content: space-between; color: var(--text-muted); font-size: 10px; margin-bottom: 4px; }
+        .kudos-item .kudos-to { color: var(--accent-orange); font-weight: 800; }
+        .kudos-empty { text-align: center; color: var(--text-muted); font-size: 12px; padding: 18px 0; }
+
         /* Media Breakpoint Controls */
         @media (min-width: 480px) {
             .job-card-header { flex-direction: row; align-items: center; }
@@ -244,6 +281,7 @@
                         <div class="notif-list" id="notifList"><div class="notif-empty">Loading...</div></div>
                     </div>
                 </div>
+                <button type="button" class="btn-team-bell" onclick="openTeamPanel()">🏆 Team</button>
                 <button onclick="logOutSession()" class="btn">Sign Out</button>
             </div>
         </div>
@@ -288,6 +326,46 @@
                         <input type="text" id="ajSearchInput" placeholder="Search job number..." oninput="renderAllJobsPanel()" style="width:100%; margin-bottom:10px; padding:8px 10px; font-size:12px; border:1px solid var(--border-color); border-radius:8px; background:var(--bg-input); color:var(--text-main);">
                         <div class="alljobs-list" id="ajList">
                             <div class="alljobs-empty">Loading...</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ── Team & Recognition Panel (v11.5) ── -->
+                <div class="team-panel" id="teamPanel">
+                    <div class="team-header" onclick="toggleTeamPanel()">
+                        <h2>🏆 Team & Recognition</h2>
+                        <span class="team-toggle" id="teamToggle">▼</span>
+                    </div>
+                    <div class="team-body" id="teamBody">
+                        <div class="tab-nav">
+                            <button type="button" class="tab-btn active" id="teamTabBtn-mystats" onclick="switchTeamTab('mystats')">My Stats</button>
+                            <button type="button" class="tab-btn" id="teamTabBtn-leaderboard" onclick="switchTeamTab('leaderboard')">Leaderboard</button>
+                            <button type="button" class="tab-btn" id="teamTabBtn-kudos" onclick="switchTeamTab('kudos')">Kudos</button>
+                        </div>
+
+                        <div class="team-tab-content active" id="teamTab-mystats">
+                            <div class="stat-mini-grid" id="myStatsGrid">
+                                <div class="stat-mini-card"><div class="stat-mini-value">--</div><div class="stat-mini-label">This Week</div></div>
+                                <div class="stat-mini-card"><div class="stat-mini-value">--</div><div class="stat-mini-label">This Month</div></div>
+                                <div class="stat-mini-card"><div class="stat-mini-value">--</div><div class="stat-mini-label">All-Time Completed</div></div>
+                                <div class="stat-mini-card"><div class="stat-mini-value">--</div><div class="stat-mini-label">Avg. Turnaround (days)</div></div>
+                            </div>
+                            <div id="myBadgesWrap">
+                                <div class="badge-empty-note">Loading badges...</div>
+                            </div>
+                        </div>
+
+                        <div class="team-tab-content" id="teamTab-leaderboard">
+                            <div id="leaderboardList"><div class="alljobs-empty">Loading...</div></div>
+                        </div>
+
+                        <div class="team-tab-content" id="teamTab-kudos">
+                            <div class="kudos-form">
+                                <select id="kudosToSelect"><option value="">Give kudos to...</option></select>
+                                <textarea id="kudosMessageInput" rows="2" placeholder="Say something nice about their work..." maxlength="300"></textarea>
+                                <button type="button" class="btn" onclick="submitKudos()">👏 Send Kudos</button>
+                            </div>
+                            <div id="kudosList"><div class="kudos-empty">Loading...</div></div>
                         </div>
                     </div>
                 </div>
@@ -347,9 +425,10 @@
     // fresh every 30s, but was previously piggy-backing a full getAdminPipeline
     // (entire Jobs sheet) call onto the same 8s loop, doubling backend load for
     // no real benefit.
-    let techQueuePoller = null; let allJobsPoller = null; let notifPoller = null;
+    let techQueuePoller = null; let allJobsPoller = null; let notifPoller = null; let teamStatsPoller = null;
     let currentSelectedStatusFilter = "ALL"; let metricsChartInstance = null;
     let openSubTabStateTracker = {};
+    let leaderboardCache = []; let myStatsCache = null; let kudosFeedCache = []; let activeTeamTab = 'mystats';
 
     function setDefaultDateConstraints() {
         const today = new Date();
@@ -387,8 +466,9 @@
         .then(res => res.json()).then(data => {
             if(data.success) {
                 // ── Hard-clear all previous session state before loading new tech data ──
-                clearInterval(techQueuePoller); clearInterval(allJobsPoller); clearInterval(notifPoller);
+                clearInterval(techQueuePoller); clearInterval(allJobsPoller); clearInterval(notifPoller); clearInterval(teamStatsPoller);
                 localJobsMasterArray = [];
+                leaderboardCache = []; myStatsCache = null; kudosFeedCache = [];
                 allJobsCache = [];
                 updatePendingNewsBar([]);
                 multipleFileUploadMasterMap = {};
@@ -402,10 +482,11 @@
 
                 currentTechSessionName = data.techName; document.getElementById('loggedTechName').innerText = currentTechSessionName;
                 document.getElementById('loginSection').style.display = "none"; document.getElementById('portalSection').style.display = "block";
-                setDefaultDateConstraints(); initMetricsChart(); loadGlobalDropdownData(); fetchTechWorkQueue(); fetchAllJobsData(); fetchNotifications(); initDesktopNotificationsDefault();
+                setDefaultDateConstraints(); initMetricsChart(); loadGlobalDropdownData(); fetchTechWorkQueue(); fetchAllJobsData(); fetchNotifications(); initDesktopNotificationsDefault(); fetchTeamStats();
                 techQueuePoller = setInterval(fetchTechWorkQueue, 8000);
                 allJobsPoller = setInterval(fetchAllJobsData, 30000);
                 notifPoller = setInterval(fetchNotifications, 25000);
+                teamStatsPoller = setInterval(fetchTeamStats, 45000);
             } else { 
                 document.getElementById('loginError').innerText = data.error; document.getElementById('loginError').style.display = "block"; 
             }
@@ -435,6 +516,7 @@
                 // Cards currently open are left alone so we don't clobber a value
                 // the technician is mid-way through selecting.
                 refreshDropdownOptionsOnExistingCards();
+                populateKudosToSelect();
             } 
         }).catch(err => console.log("Dropdown Data Pipeline Error: ", err));
     }
@@ -985,6 +1067,166 @@
     });
     // ─────────────────────────────────────────────────────────────────────────
 
+    // ── Team & Recognition Panel (v11.5, NEW) ───────────────────────────────
+    // Leaderboard + personal performance stats + kudos feed, all served from
+    // one combined getTeamStats call. Badges are computed here on the client
+    // from the numbers the backend returns, so thresholds can be tuned
+    // without touching the Apps Script backend.
+    function toggleTeamPanel() {
+        const body = document.getElementById('teamBody');
+        const toggle = document.getElementById('teamToggle');
+        const willOpen = !body.classList.contains('open');
+        body.classList.toggle('open', willOpen);
+        toggle.classList.toggle('open', willOpen);
+        if (willOpen) fetchTeamStats();
+    }
+
+    function openTeamPanel() {
+        const body = document.getElementById('teamBody');
+        if (!body.classList.contains('open')) toggleTeamPanel();
+        document.getElementById('teamPanel').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
+    function switchTeamTab(tab) {
+        activeTeamTab = tab;
+        ['mystats', 'leaderboard', 'kudos'].forEach(function (t) {
+            document.getElementById('teamTab-' + t).classList.toggle('active', t === tab);
+            document.getElementById('teamTabBtn-' + t).classList.toggle('active', t === tab);
+        });
+    }
+
+    function fetchTeamStats() {
+        if (!currentTechSessionName) return;
+        fetch(`${WEB_APP_URL}?action=getTeamStats&techName=${encodeURIComponent(currentTechSessionName)}`)
+        .then(res => res.json())
+        .then(data => {
+            if (!data.success) return;
+            leaderboardCache = data.leaderboard || [];
+            myStatsCache = data.myStats || null;
+            kudosFeedCache = data.kudos || [];
+            renderMyStats();
+            renderLeaderboard();
+            renderKudosFeed();
+            populateKudosToSelect();
+        })
+        .catch(() => {});
+    }
+
+    function computeBadges(stats) {
+        if (!stats) return [];
+        const badges = [];
+        if (stats.completedTotal >= 100) badges.push({ icon: '🥇', label: '100 Jobs Completed' });
+        else if (stats.completedTotal >= 50) badges.push({ icon: '🥈', label: '50 Jobs Completed' });
+        else if (stats.completedTotal >= 10) badges.push({ icon: '🥉', label: '10 Jobs Completed' });
+        if (stats.completedWeek >= 5) badges.push({ icon: '🔥', label: "This Week's Grinder" });
+        if (stats.avgTurnaroundDays !== null && stats.avgTurnaroundDays !== undefined && stats.avgTurnaroundDays <= 2 && stats.completedTotal >= 5) badges.push({ icon: '⚡', label: 'Fast Hands (≤2 day avg)' });
+        if (stats.completedTotal >= 10 && stats.returnedTotal === 0) badges.push({ icon: '💯', label: 'Zero Returns' });
+        return badges;
+    }
+
+    function renderMyStats() {
+        const grid = document.getElementById('myStatsGrid');
+        const badgesWrap = document.getElementById('myBadgesWrap');
+        if (!grid || !badgesWrap) return;
+
+        if (!myStatsCache) {
+            grid.innerHTML = `
+                <div class="stat-mini-card"><div class="stat-mini-value">0</div><div class="stat-mini-label">This Week</div></div>
+                <div class="stat-mini-card"><div class="stat-mini-value">0</div><div class="stat-mini-label">This Month</div></div>
+                <div class="stat-mini-card"><div class="stat-mini-value">0</div><div class="stat-mini-label">All-Time Completed</div></div>
+                <div class="stat-mini-card"><div class="stat-mini-value">--</div><div class="stat-mini-label">Avg. Turnaround (days)</div></div>`;
+            badgesWrap.innerHTML = '<div class="badge-empty-note">Complete a few jobs to start earning badges!</div>';
+            return;
+        }
+
+        grid.innerHTML = `
+            <div class="stat-mini-card"><div class="stat-mini-value">${myStatsCache.completedWeek}</div><div class="stat-mini-label">This Week</div></div>
+            <div class="stat-mini-card"><div class="stat-mini-value">${myStatsCache.completedMonth}</div><div class="stat-mini-label">This Month</div></div>
+            <div class="stat-mini-card"><div class="stat-mini-value">${myStatsCache.completedTotal}</div><div class="stat-mini-label">All-Time Completed</div></div>
+            <div class="stat-mini-card"><div class="stat-mini-value">${myStatsCache.avgTurnaroundDays !== null && myStatsCache.avgTurnaroundDays !== undefined ? myStatsCache.avgTurnaroundDays : '--'}</div><div class="stat-mini-label">Avg. Turnaround (days)</div></div>`;
+
+        const badges = computeBadges(myStatsCache);
+        if (badges.length === 0) {
+            badgesWrap.innerHTML = '<div class="badge-empty-note">Complete a few jobs to start earning badges!</div>';
+        } else {
+            badgesWrap.innerHTML = '<div class="badge-chip-row">' + badges.map(b =>
+                `<span class="badge-chip"><span class="b-icon">${b.icon}</span> ${b.label}</span>`
+            ).join('') + '</div>';
+        }
+    }
+
+    function renderLeaderboard() {
+        const wrap = document.getElementById('leaderboardList');
+        if (!wrap) return;
+        if (!leaderboardCache || leaderboardCache.length === 0) {
+            wrap.innerHTML = '<div class="alljobs-empty">No completed jobs logged yet.</div>';
+            return;
+        }
+        const medals = ['medal-1', 'medal-2', 'medal-3'];
+        wrap.innerHTML = leaderboardCache.map((row, i) => {
+            const isMe = row.tech === currentTechSessionName;
+            const medalClass = medals[i] || '';
+            const rankLabel = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : (i + 1);
+            return `
+                <div class="lb-row ${isMe ? 'is-me' : ''}">
+                    <div class="lb-rank ${medalClass}">${rankLabel}</div>
+                    <div class="lb-name">${row.tech}${isMe ? ' (You)' : ''}</div>
+                    <div class="lb-stats"><span><strong>${row.completedWeek}</strong> wk</span><span>${row.completedTotal} total</span></div>
+                </div>`;
+        }).join('');
+    }
+
+    function populateKudosToSelect() {
+        const select = document.getElementById('kudosToSelect');
+        if (!select) return;
+        const currentVal = select.value;
+        let optionsHtml = `<option value="">Give kudos to...</option>`;
+        globalTechListCache.forEach(tName => {
+            if (tName === currentTechSessionName) return; // can't kudos yourself
+            optionsHtml += `<option value="${tName}">${tName}</option>`;
+        });
+        select.innerHTML = optionsHtml;
+        if (currentVal) select.value = currentVal;
+    }
+
+    function renderKudosFeed() {
+        const wrap = document.getElementById('kudosList');
+        if (!wrap) return;
+        if (!kudosFeedCache || kudosFeedCache.length === 0) {
+            wrap.innerHTML = '<div class="kudos-empty">No shoutouts yet — be the first to send one!</div>';
+            return;
+        }
+        wrap.innerHTML = kudosFeedCache.map(k => `
+            <div class="kudos-item">
+                <div class="kudos-meta"><span>${k.fromTech} → <span class="kudos-to">${k.toTech}</span></span><span>${formatNotifTime(k.timestamp)}</span></div>
+                <div>${k.message}</div>
+            </div>`).join('');
+    }
+
+    function submitKudos() {
+        const toTech = document.getElementById('kudosToSelect').value;
+        const message = document.getElementById('kudosMessageInput').value.trim();
+        if (!toTech) { alert('Pick who this kudos is for.'); return; }
+        if (!message) { alert('Write a quick message first.'); return; }
+
+        fetch(WEB_APP_URL, {
+            method: 'POST',
+            body: JSON.stringify({ action: "postKudos", fromTech: currentTechSessionName, toTech: toTech, message: message })
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.success) {
+                document.getElementById('kudosMessageInput').value = '';
+                document.getElementById('kudosToSelect').value = '';
+                fetchTeamStats();
+            } else {
+                alert('Could not send kudos: ' + (data.error || 'Unknown error.'));
+            }
+        })
+        .catch(() => alert('Network error while sending kudos.'));
+    }
+    // ─────────────────────────────────────────────────────────────────────────
+
     /**
  * IMAGE COMPRESSION PATCH — technician-terminal.html
  *
@@ -1178,10 +1420,11 @@ function handleMultiImageProcessing(inputElement, jobNum) {
     }
 
     function logOutSession() {
-        clearInterval(techQueuePoller); clearInterval(allJobsPoller); clearInterval(notifPoller);
+        clearInterval(techQueuePoller); clearInterval(allJobsPoller); clearInterval(notifPoller); clearInterval(teamStatsPoller);
         currentTechSessionName = "";
         localJobsMasterArray = [];
         allJobsCache = [];
+        leaderboardCache = []; myStatsCache = null; kudosFeedCache = [];
         multipleFileUploadMasterMap = {};
         openCardStateTracker = null;
         openSubTabStateTracker = {};
