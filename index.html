@@ -98,10 +98,24 @@
         .tab-btn.active { color: var(--accent-blue); border-bottom: 2px solid var(--accent-blue); }
         
         .msg-alert { padding: 10px; border-radius: 8px; text-align: center; margin-top: 10px; display: none; font-size: 13px; font-weight: bold; word-break: break-word; }
-        .timeline-stream { display: flex; flex-direction: column; gap: 12px; width: 100%; }
-        .timeline-node { background: var(--bg-input); padding: 12px; border-radius: 8px; border-left: 3px solid var(--accent-blue); width: 100%; }
-        .timeline-header { display: flex; justify-content: space-between; font-size: 11px; color: var(--text-muted); margin-bottom: 4px; gap: 8px; }
         .timeline-img-launcher { width: 60px; height: 60px; object-fit: cover; border-radius: 6px; cursor: pointer; border: 1px solid var(--border-color); margin: 6px 6px 0 0; background-color: #000; }
+
+        /* ── Facebook-style Activity Feed (Update + History merged) ── */
+        .composer-card { background: var(--bg-input); border: 1px solid var(--border-color); border-radius: 14px; padding: 14px; width: 100%; }
+        .feed-divider { display: flex; align-items: center; gap: 10px; margin: 18px 0 12px; color: var(--text-muted); font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; }
+        .feed-divider::before, .feed-divider::after { content: ""; flex: 1; height: 1px; background: var(--border-color); }
+        .activity-feed { display: flex; flex-direction: column; gap: 14px; width: 100%; }
+        .comment-item { display: flex; gap: 10px; width: 100%; align-items: flex-start; }
+        .comment-avatar { width: 36px; height: 36px; border-radius: 50%; background: var(--accent-blue); color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 13px; flex-shrink: 0; }
+        .comment-bubble { background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 16px; padding: 10px 14px; flex: 1; min-width: 0; }
+        .comment-bubble-head { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px; margin-bottom: 4px; }
+        .comment-author { font-weight: 700; font-size: 13px; color: var(--text-main); }
+        .comment-time { font-size: 11px; color: var(--text-muted); }
+        .comment-status-chip { padding: 2px 8px; border-radius: 20px; font-size: 10px; font-weight: 700; color: #fff; text-transform: uppercase; white-space: nowrap; }
+        .comment-notes { font-size: 13px; color: var(--text-main); line-height: 1.45; white-space: pre-wrap; word-break: break-word; }
+        .comment-images { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+        .feed-empty { text-align: center; color: var(--text-muted); font-size: 13px; padding: 16px 0; }
+        .feed-loading { text-align: center; color: var(--text-muted); font-size: 13px; padding: 10px 0; }
         
         /* Lightbox Modals Elements */
         .lightbox-modal { display: none; position: fixed; z-index: 10000; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.9); align-items: center; justify-content: center; }
@@ -175,6 +189,19 @@
         .team-body { display: none; padding: 12px; }
         .team-body.open { display: block; }
         .btn-team-bell { background: rgba(255,159,28,0.12); color: var(--accent-orange); border: 1px solid var(--accent-orange); padding: 9px 12px; border-radius: 8px; cursor: pointer; font-weight: 700; font-size: 13px; }
+
+        /* ── Profile settings (NEW v11.10) ──────────────────────────────── */
+        .btn-profile-avatar { background: var(--bg-input); border: 1px solid var(--border-color); padding: 0; border-radius: 50%; cursor: pointer; width: 38px; height: 38px; flex-shrink: 0; overflow: hidden; display: flex; align-items: center; justify-content: center; }
+        .btn-profile-avatar img { width: 100%; height: 100%; object-fit: cover; }
+        .btn-profile-avatar .avatar-fallback { width: 100%; height: 100%; background: var(--accent-blue); color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 13px; }
+        .avatar-img-round { width: 100%; height: 100%; object-fit: cover; border-radius: 50%; }
+        .profile-modal-card { background: var(--bg-card); border-radius: 16px; padding: 20px; width: 100%; max-width: 380px; border: 1px solid var(--border-color); max-height: 90vh; overflow-y: auto; }
+        .profile-pic-row { display: flex; flex-direction: column; align-items: center; gap: 10px; margin-bottom: 18px; }
+        .profile-pic-preview { width: 88px; height: 88px; border-radius: 50%; overflow: hidden; border: 2px solid var(--accent-blue); display: flex; align-items: center; justify-content: center; background: var(--accent-blue); }
+        .profile-pic-preview img { width: 100%; height: 100%; object-fit: cover; }
+        .profile-pic-preview .avatar-fallback { color: #fff; font-weight: 800; font-size: 26px; }
+        .profile-section-label { font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; margin: 16px 0 8px; border-top: 1px solid var(--border-color); padding-top: 14px; }
+        .profile-section-label:first-of-type { border-top: none; margin-top: 0; padding-top: 0; }
 
         .team-tab-content { display: none; }
         .team-tab-content.active { display: block; }
@@ -282,6 +309,7 @@
                     </div>
                 </div>
                 <button type="button" class="btn-team-bell" onclick="openTeamPanel()">🏆 Team</button>
+                <button type="button" class="btn-profile-avatar" id="profileAvatarBtn" onclick="openProfileModal()" title="Profile Settings"><span class="avatar-fallback" id="profileAvatarFallback">?</span><img id="profileAvatarImg" style="display:none;"></button>
                 <button onclick="logOutSession()" class="btn">Sign Out</button>
             </div>
         </div>
@@ -387,6 +415,31 @@
     <img class="lightbox-content" id="lightboxTargetImg">
 </div>
 
+<!-- ── Profile Settings Modal (NEW v11.10) ── -->
+<div id="profileModal" class="lightbox-modal" style="align-items:flex-start; padding-top:6vh;" onclick="if(event.target===this) closeProfileModal()">
+    <div class="profile-modal-card" onclick="event.stopPropagation()">
+        <h2 style="display:flex; justify-content:space-between; align-items:center;">👤 Profile Settings <span style="cursor:pointer; font-size:20px; color:var(--text-muted);" onclick="closeProfileModal()">×</span></h2>
+
+        <div class="profile-pic-row">
+            <div class="profile-pic-preview" id="profilePicPreviewWrap">
+                <span class="avatar-fallback" id="profilePicPreviewFallback">?</span>
+                <img id="profilePicPreviewImg" style="display:none;">
+            </div>
+            <input type="file" accept="image/*" id="profilePicFileInput" onchange="handleProfilePicSelected(event)" style="width:auto;">
+        </div>
+
+        <div class="profile-section-label">Change Password (optional)</div>
+        <div class="form-group"><label>New Password</label><input type="password" id="profileNewPassword" placeholder="Leave blank to keep current password"></div>
+        <div class="form-group"><label>Confirm New Password</label><input type="password" id="profileConfirmPassword" placeholder="Re-enter new password"></div>
+
+        <div class="profile-section-label">Confirm It's You</div>
+        <div class="form-group"><label>Current Password</label><input type="password" id="profileCurrentPassword" placeholder="Required to save any change" required></div>
+
+        <button type="button" class="btn" style="width:100%;" onclick="submitProfileUpdate()" id="profileSaveBtn">Save Changes</button>
+        <div id="profileModalMsg" class="msg-alert"></div>
+    </div>
+</div>
+
 <script>
     const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbytDEJQNBfn1shoA5Ig5y8I1Vc4WzjuY6C451Pdte-MGZj93CcpAjUwyI050ss6cbs1/exec";
 
@@ -418,6 +471,8 @@
     })();
 
     let currentTechSessionName = ""; let localJobsMasterArray = []; let globalTechListCache = []; let globalWorkshopListCache = []; let dropdownDataLoaded = false;
+    // NEW v11.10 — profile settings state
+    let currentTechSessionUsername = ""; let currentProfilePicUrl = ""; let globalProfilePicsCache = {}; let selectedProfilePicBase64 = null;
     let multipleFileUploadMasterMap = {}; let openCardStateTracker = null;
     // PERF FIX: split into two independent pollers instead of one combined 8s loop.
     // techQueuePoller: the technician's own queue — stays fast/responsive (8s).
@@ -481,6 +536,8 @@
                 document.querySelectorAll('.filter-pill').forEach((p, i) => p.classList.toggle('active', i === 0));
 
                 currentTechSessionName = data.techName; document.getElementById('loggedTechName').innerText = currentTechSessionName;
+                currentTechSessionUsername = data.username || ""; currentProfilePicUrl = data.profilePicUrl || "";
+                updateProfileAvatarUI();
                 document.getElementById('loginSection').style.display = "none"; document.getElementById('portalSection').style.display = "block";
                 setDefaultDateConstraints(); initMetricsChart(); loadGlobalDropdownData(); fetchTechWorkQueue(); fetchAllJobsData(); fetchNotifications(); initDesktopNotificationsDefault(); fetchTeamStats();
                 techQueuePoller = setInterval(fetchTechWorkQueue, 8000);
@@ -509,6 +566,7 @@
             if(data.success) { 
                 globalTechListCache = data.technicians || []; 
                 globalWorkshopListCache = data.workshops || []; 
+                globalProfilePicsCache = data.profilePics || {};
                 dropdownDataLoaded = true;
                 // Refresh the tech/workshop <select> options on any cards that were
                 // already built (e.g. if fetchTechWorkQueue's response happened to
@@ -744,13 +802,12 @@
                 </div>
                 <div class="job-card-body" id="body-${job.jobNum}">
                     <div class="tab-nav">
-                        <button class="tab-btn ${activeTab==='update'?'active':''}" id="tabL-${job.jobNum}-up" onclick="switchSubPanelModule(${job.jobNum}, 'update')">🔧 Update Status</button>
+                        <button class="tab-btn ${activeTab==='update'?'active':''}" id="tabL-${job.jobNum}-up" onclick="switchSubPanelModule(${job.jobNum}, 'update')">🔧 Update &amp; History</button>
                         <button class="tab-btn ${activeTab==='transfer'?'active':''}" id="tabL-${job.jobNum}-tr" onclick="switchSubPanelModule(${job.jobNum}, 'transfer')">🚀 Handover</button>
                         <button class="tab-btn ${activeTab==='edit'?'active':''}" id="tabL-${job.jobNum}-ed" onclick="switchSubPanelModule(${job.jobNum}, 'edit')">✏️ Edit Details</button>
-                        <button class="tab-btn ${activeTab==='history'?'active':''}" id="tabL-${job.jobNum}-hs" onclick="switchSubPanelModule(${job.jobNum}, 'history')">📋 History Logs</button>
                     </div>
                     <div id="panel-${job.jobNum}-update" style="display:${activeTab==='update'?'block':'none'};">
-                        <form onsubmit="submitJobStatusUpdateEngine(event, ${job.jobNum})">
+                        <form class="composer-card" onsubmit="submitJobStatusUpdateEngine(event, ${job.jobNum})">
                             <div class="grid-2">
                                 <div class="form-group">
                                     <label>Action State Matrix</label>
@@ -777,9 +834,11 @@
                                 <label>Final Total Price (Rs.) <span style="font-weight:400; color:var(--text-muted); text-transform:none;">— optional, set on completion</span></label>
                                 <input type="number" id="totalprice-${job.jobNum}" min="0" step="0.01" placeholder="${job.totalPrice !== '' && job.totalPrice != null ? job.totalPrice : (job.estimatePrice !== '' && job.estimatePrice != null ? 'Estimate was Rs. ' + job.estimatePrice : 'e.g. 4500')}" value="${job.totalPrice !== '' && job.totalPrice != null ? job.totalPrice : ''}">
                             </div>
-                            <div class="form-group" style="margin-top:10px;"><label>Operational Technical Remarks / Log Notes</label><textarea rows="2" placeholder="Provide full breakdown details..." required></textarea></div>
-                            <button type="submit" class="btn" style="background:var(--accent-green); width:100%;">Commit Update</button>
+                            <div class="form-group" style="margin-top:10px;"><label>Operational Technical Remarks / Log Notes</label><textarea rows="2" placeholder="Write an update, like a comment..." required></textarea></div>
+                            <button type="submit" class="btn" style="background:var(--accent-green); width:100%;">💬 Post Update</button>
                         </form>
+                        <div class="feed-divider">Activity</div>
+                        <div class="activity-feed" id="history-stream-${job.jobNum}"><div class="feed-loading">Loading activity…</div></div>
                     </div>
                     <div id="panel-${job.jobNum}-transfer" style="display:${activeTab==='transfer'?'block':'none'};">
                         <form onsubmit="executeTicketHandoverRoute(event, ${job.jobNum})">
@@ -816,9 +875,6 @@
                         </form>
                         <div id="msg-edit-${job.jobNum}" class="msg-alert"></div>
                     </div>
-                    <div id="panel-${job.jobNum}-history" style="display:${activeTab==='history'?'block':'none'};">
-                        <div class="timeline-stream" id="history-stream-${job.jobNum}">Loading history matrix rows...</div>
-                    </div>
                     <div id="msg-${job.jobNum}" class="msg-alert"></div>
                 </div>
             </div>
@@ -834,7 +890,7 @@
             body.style.display = "block"; card.classList.add('is-open'); openCardStateTracker = jobNum; 
             renderImageThumbnailsDeck(jobNum); 
             if(!openSubTabStateTracker[jobNum]) openSubTabStateTracker[jobNum] = 'update';
-            if(openSubTabStateTracker[jobNum] === 'history') loadJobHistoryTimeline(jobNum);
+            if(openSubTabStateTracker[jobNum] === 'update') loadJobHistoryTimeline(jobNum);
         } else { body.style.display = "none"; card.classList.remove('is-open'); openCardStateTracker = null; }
     }
 
@@ -843,12 +899,10 @@
         document.getElementById(`panel-${jobNum}-update`).style.display = module === 'update' ? 'block' : 'none';
         document.getElementById('panel-'+jobNum+'-transfer').style.display = module === 'transfer' ? 'block' : 'none';
         document.getElementById('panel-'+jobNum+'-edit').style.display = module === 'edit' ? 'block' : 'none';
-        document.getElementById('panel-'+jobNum+'-history').style.display = module === 'history' ? 'block' : 'none';
         document.getElementById(`tabL-${jobNum}-up`).classList.toggle('active', module === 'update');
         document.getElementById(`tabL-${jobNum}-tr`).classList.toggle('active', module === 'transfer');
         document.getElementById(`tabL-${jobNum}-ed`).classList.toggle('active', module === 'edit');
-        document.getElementById(`tabL-${jobNum}-hs`).classList.toggle('active', module === 'history');
-        if(module === 'history') loadJobHistoryTimeline(jobNum);
+        if(module === 'update') loadJobHistoryTimeline(jobNum);
     }
 
     // NEW v11.3: "Mark Customer Informed" — increments the count + timestamp
@@ -1331,17 +1385,153 @@ function handleMultiImageProcessing(inputElement, jobNum) {
     }
     function removeImageFromDeck(jobNum, idx) { multipleFileUploadMasterMap[jobNum].splice(idx, 1); renderImageThumbnailsDeck(jobNum); }
 
+    function getCommentInitials(name) {
+        const parts = String(name || '?').trim().split(/\s+/).filter(Boolean);
+        if (parts.length === 0) return '?';
+        if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+        return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+    }
+
+    // NEW v11.10 — renders a real profile photo when one exists for this
+    // operator name (e.g. "Tech: John Doe" -> looks up "John Doe"),
+    // otherwise falls back to the existing initials-circle look.
+    function getAvatarHtml(operatorRaw) {
+        const cleanName = String(operatorRaw || '').replace(/^Tech:\s*/i, '').trim();
+        const picUrl = globalProfilePicsCache[cleanName];
+        if (picUrl) return `<div class="comment-avatar" style="padding:0; overflow:hidden;"><img src="${picUrl}" class="avatar-img-round" onerror="this.parentElement.innerHTML='${getCommentInitials(cleanName)}'"></div>`;
+        return `<div class="comment-avatar">${getCommentInitials(cleanName)}</div>`;
+    }
+
+    // ── Profile Settings modal (NEW v11.10) ─────────────────────────────
+    function updateProfileAvatarUI() {
+        const img = document.getElementById('profileAvatarImg');
+        const fallback = document.getElementById('profileAvatarFallback');
+        if (currentProfilePicUrl) {
+            img.src = currentProfilePicUrl; img.style.display = 'block'; fallback.style.display = 'none';
+        } else {
+            img.style.display = 'none'; fallback.style.display = 'flex'; fallback.innerText = getCommentInitials(currentTechSessionName);
+        }
+    }
+
+    function openProfileModal() {
+        selectedProfilePicBase64 = null;
+        document.getElementById('profileNewPassword').value = "";
+        document.getElementById('profileConfirmPassword').value = "";
+        document.getElementById('profileCurrentPassword').value = "";
+        document.getElementById('profilePicFileInput').value = "";
+        document.getElementById('profileModalMsg').style.display = 'none';
+
+        const previewImg = document.getElementById('profilePicPreviewImg');
+        const previewFallback = document.getElementById('profilePicPreviewFallback');
+        if (currentProfilePicUrl) {
+            previewImg.src = currentProfilePicUrl; previewImg.style.display = 'block'; previewFallback.style.display = 'none';
+        } else {
+            previewImg.style.display = 'none'; previewFallback.style.display = 'flex'; previewFallback.innerText = getCommentInitials(currentTechSessionName);
+        }
+        document.getElementById('profileModal').style.display = 'flex';
+    }
+
+    function closeProfileModal() {
+        document.getElementById('profileModal').style.display = 'none';
+    }
+
+    function handleProfilePicSelected(event) {
+        const file = event.target.files[0];
+        if (!file) return;
+        if (!file.type.startsWith('image/')) { alert('Please choose an image file.'); event.target.value = ""; return; }
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            selectedProfilePicBase64 = e.target.result;
+            const previewImg = document.getElementById('profilePicPreviewImg');
+            const previewFallback = document.getElementById('profilePicPreviewFallback');
+            previewImg.src = selectedProfilePicBase64; previewImg.style.display = 'block'; previewFallback.style.display = 'none';
+        };
+        reader.readAsDataURL(file);
+    }
+
+    function submitProfileUpdate() {
+        const msgBox = document.getElementById('profileModalMsg');
+        const currentPassword = document.getElementById('profileCurrentPassword').value;
+        const newPassword = document.getElementById('profileNewPassword').value;
+        const confirmPassword = document.getElementById('profileConfirmPassword').value;
+
+        msgBox.style.display = 'none';
+
+        if (!currentPassword) {
+            msgBox.style.background = "rgba(239,71,111,0.2)"; msgBox.style.color = "var(--accent-red)";
+            msgBox.innerText = "❌ Enter your current password to confirm it's you."; msgBox.style.display = 'block';
+            return;
+        }
+        if (newPassword && newPassword !== confirmPassword) {
+            msgBox.style.background = "rgba(239,71,111,0.2)"; msgBox.style.color = "var(--accent-red)";
+            msgBox.innerText = "❌ New password and confirmation don't match."; msgBox.style.display = 'block';
+            return;
+        }
+        if (!newPassword && !selectedProfilePicBase64) {
+            msgBox.style.background = "rgba(239,71,111,0.2)"; msgBox.style.color = "var(--accent-red)";
+            msgBox.innerText = "❌ Choose a new photo and/or enter a new password before saving."; msgBox.style.display = 'block';
+            return;
+        }
+
+        const saveBtn = document.getElementById('profileSaveBtn');
+        saveBtn.disabled = true; saveBtn.innerText = "Saving...";
+
+        const payload = { action: "updateMyProfile", username: currentTechSessionUsername, currentPassword: currentPassword };
+        if (newPassword) payload.newPassword = newPassword;
+        if (selectedProfilePicBase64) { payload.imageBase64 = selectedProfilePicBase64; payload.imageName = currentTechSessionUsername + "_profile.jpg"; }
+
+        fetch(WEB_APP_URL, { method: 'POST', body: JSON.stringify(payload) })
+        .then(res => res.json())
+        .then(data => {
+            saveBtn.disabled = false; saveBtn.innerText = "Save Changes";
+            if (data.success) {
+                if (data.profilePicUrl) { currentProfilePicUrl = data.profilePicUrl; updateProfileAvatarUI(); }
+                loadGlobalDropdownData();
+                msgBox.style.background = "rgba(6,214,160,0.2)"; msgBox.style.color = "var(--accent-green)";
+                msgBox.innerText = "✅ Updated: " + data.changed.join(", ") + ".";
+                msgBox.style.display = 'block';
+                document.getElementById('profileNewPassword').value = "";
+                document.getElementById('profileConfirmPassword').value = "";
+                document.getElementById('profileCurrentPassword').value = "";
+                selectedProfilePicBase64 = null;
+            } else {
+                msgBox.style.background = "rgba(239,71,111,0.2)"; msgBox.style.color = "var(--accent-red)";
+                msgBox.innerText = "❌ " + (data.error || "Could not save changes.");
+                msgBox.style.display = 'block';
+            }
+        })
+        .catch(() => {
+            saveBtn.disabled = false; saveBtn.innerText = "Save Changes";
+            msgBox.style.background = "rgba(239,71,111,0.2)"; msgBox.style.color = "var(--accent-red)";
+            msgBox.innerText = "❌ Network error. Please retry."; msgBox.style.display = 'block';
+        });
+    }
+
     function loadJobHistoryTimeline(jobNum) {
         const stream = document.getElementById(`history-stream-${jobNum}`); if(!stream) return;
+        stream.innerHTML = `<div class="feed-loading">Loading activity…</div>`;
         fetch(`${WEB_APP_URL}?action=getJobHistory&jobNum=${jobNum}`).then(res => res.json()).then(data => {
-            if(!data.success || data.history.length === 0) { stream.innerText = "No logs found."; return; }
-            let timelineHtml = "";
-            data.history.forEach(log => {
+            if(!data.success || data.history.length === 0) { stream.innerHTML = `<div class="feed-empty">No activity yet — updates will appear here like comments.</div>`; return; }
+            // Newest first, so a technician watching the feed sees the latest status right away.
+            const ordered = data.history.slice().reverse();
+            let feedHtml = "";
+            ordered.forEach(log => {
                 let imagesHtml = "";
                 log.images.forEach(url => { if(url) imagesHtml += `<img src="${url}" class="timeline-img-launcher" onclick="launchImageLightbox('${url}')" onerror="this.src='https://cdn-icons-png.flaticon.com/512/13434/13434972.png'">`; });
-                timelineHtml += `<div class="timeline-node"><div class="timeline-header"><span>⏱️ ${log.timestamp}</span><span>${log.operator}</span></div><div>Status: <strong>${log.status}</strong></div><div style="margin-top:2px; color:#cbd5e1;">${log.notes}</div><div style="display:flex; flex-wrap:wrap; margin-top:5px;">${imagesHtml}</div></div>`;
+                feedHtml += `<div class="comment-item">
+                    ${getAvatarHtml(log.operator)}
+                    <div class="comment-bubble">
+                        <div class="comment-bubble-head">
+                            <span class="comment-author">${log.operator}</span>
+                            <span class="comment-status-chip b-${String(log.status).replace(/\s+/g, '')}">${log.status}</span>
+                            <span class="comment-time">⏱️ ${log.timestamp}</span>
+                        </div>
+                        <div class="comment-notes">${log.notes || ''}</div>
+                        ${imagesHtml ? `<div class="comment-images">${imagesHtml}</div>` : ''}
+                    </div>
+                </div>`;
             });
-            stream.innerHTML = timelineHtml;
+            stream.innerHTML = feedHtml;
         });
     }
 
@@ -1358,6 +1548,8 @@ function handleMultiImageProcessing(inputElement, jobNum) {
         .then(res => res.json()).then(data => {
             if(data.success) {
                 alertBox.style.background = "rgba(6,214,160,0.2)"; alertBox.style.color = "var(--accent-green)"; alertBox.innerText = "🎉 Status Logged Successfully!"; multipleFileUploadMasterMap[jobNum] = []; form.reset();
+                renderImageThumbnailsDeck(jobNum);
+                loadJobHistoryTimeline(jobNum); // new comment-style entry shows up in the feed instantly
 
                 // Reflect the change instantly — update the local cache and the
                 // card header right away instead of waiting on the next poll.
@@ -1422,6 +1614,7 @@ function handleMultiImageProcessing(inputElement, jobNum) {
     function logOutSession() {
         clearInterval(techQueuePoller); clearInterval(allJobsPoller); clearInterval(notifPoller); clearInterval(teamStatsPoller);
         currentTechSessionName = "";
+        currentTechSessionUsername = ""; currentProfilePicUrl = ""; globalProfilePicsCache = {}; selectedProfilePicBase64 = null;
         localJobsMasterArray = [];
         allJobsCache = [];
         leaderboardCache = []; myStatsCache = null; kudosFeedCache = [];
