@@ -125,6 +125,8 @@
         .queue-utility-header { display: flex; flex-direction: column; justify-content: space-between; align-items: flex-start; gap: 10px; margin-bottom: 12px; width: 100%; }
         .btn-refresh-queue { width: 100%; background-color: var(--bg-card); color: var(--text-main); border: 1px solid var(--border-color); padding: 10px 14px; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: bold; display: flex; align-items: center; justify-content: center; gap: 6px; transition: background 0.2s; }
         .btn-refresh-queue:hover { background-color: var(--border-color); }
+        .btn-reset-filters { background-color: var(--bg-card); color: var(--text-muted); border: 1px solid var(--border-color); padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 11px; font-weight: 700; display: flex; align-items: center; gap: 5px; transition: background 0.2s, color 0.2s; white-space: nowrap; }
+        .btn-reset-filters:hover { background-color: var(--border-color); color: var(--text-main); }
 
         /* ── SAP14 Pending Jobs Panel ── */
         .alljobs-panel { background: var(--bg-card); border-radius: 14px; border: 1px solid var(--border-color); overflow: hidden; width: 100%; }
@@ -182,6 +184,13 @@
 
         /* ── Team & Recognition Panel (leaderboard / badges / kudos) ── */
         .team-panel { background: var(--bg-card); border-radius: 14px; border: 1px solid var(--border-color); overflow: hidden; width: 100%; }
+        .controls-matrix-panel { background: var(--bg-card); border-radius: 14px; border: 1px solid var(--border-color); overflow: hidden; width: 100%; }
+        .controls-matrix-header { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; background: var(--bg-header-alt); cursor: pointer; user-select: none; gap: 8px; flex-wrap: wrap; }
+        .controls-matrix-header h2 { margin: 0; font-size: 14px; color: var(--text-main); border: none; padding: 0; }
+        .controls-matrix-toggle { font-size: 14px; color: var(--text-muted); transition: transform 0.25s; }
+        .controls-matrix-toggle.open { transform: rotate(180deg); }
+        .controls-matrix-body { display: none; padding: 16px; }
+        .controls-matrix-body.open { display: block; }
         .team-header { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; background: var(--bg-header-alt); cursor: pointer; user-select: none; }
         .team-header h2 { margin: 0; font-size: 14px; color: var(--text-main); border: none; padding: 0; }
         .team-toggle { font-size: 14px; color: var(--text-muted); transition: transform 0.25s; }
@@ -317,32 +326,6 @@
         <div class="workspace-grid">
             <div class="sticky-panel">
                 <div class="glass-card"><div class="chart-container"><canvas id="techStatusChart"></canvas></div></div>
-                <div class="glass-card">
-                    <h2>🔍 Controls & Sorting Matrix</h2>
-                    <input type="text" id="searchBarInput" placeholder="Search Jobs..." oninput="evaluateFilterPipeline()" style="width:100%; margin-bottom:10px;">
-                    <div class="grid-2" style="margin-bottom: 10px;">
-                        <div>
-                            <label>Date From</label>
-                            <input type="date" id="filterStartDate" onchange="evaluateFilterPipeline()">
-                        </div>
-                        <div>
-                            <label>Date To</label>
-                            <input type="date" id="filterEndDate" onchange="evaluateFilterPipeline()">
-                        </div>
-                    </div>
-                    <div class="filter-pill-box">
-                        <div class="filter-pill active" onclick="setStatusFilter('ALL', this)">All Tasks</div>
-                        <div class="filter-pill" onclick="setStatusFilter('Pending', this)">Pending</div>
-                        <div class="filter-pill" onclick="setStatusFilter('Pending for Quotation', this)">Pending for Quotation</div>
-                        <div class="filter-pill" onclick="setStatusFilter('Ongoing', this)">Ongoing</div>
-                        <div class="filter-pill" onclick="setStatusFilter('Warranty Pending', this)">Warranty Pending</div>
-                        <div class="filter-pill" onclick="setStatusFilter('Customer Hold', this)">Customer Hold</div>
-                        <div class="filter-pill" onclick="setStatusFilter('Completed', this)">Completed</div>
-                        <div class="filter-pill" onclick="setStatusFilter('Cant Repair', this)">Cant Repair</div>
-                        <div class="filter-pill" onclick="setStatusFilter('Returned', this)">Returned</div>
-                        <div class="filter-pill" onclick="setStatusFilter('Warranty Claimed', this)">Warranty Claimed</div>
-                    </div>
-                </div>
 
                 <!-- ── SAP14 Pending Jobs Panel ── -->
                 <div class="alljobs-panel">
@@ -400,6 +383,53 @@
             </div>
 
             <div class="right-column-panel">
+                <div class="controls-matrix-panel">
+                    <div class="controls-matrix-header" onclick="toggleControlsMatrixPanel()">
+                        <h2>🔍 Controls & Sorting Matrix</h2>
+                        <div style="display:flex; align-items:center; gap:8px;">
+                            <button type="button" class="btn-reset-filters" onclick="event.stopPropagation(); resetFilterControls()">↺ Reset Filters</button>
+                            <span class="controls-matrix-toggle open" id="controlsMatrixToggle">▼</span>
+                        </div>
+                    </div>
+                    <div class="controls-matrix-body open" id="controlsMatrixBody">
+                        <input type="text" id="searchBarInput" placeholder="Search Jobs..." oninput="evaluateFilterPipeline()" style="width:100%; margin-bottom:10px;">
+                        <div class="grid-2" style="margin-bottom: 10px;">
+                            <div>
+                                <label>Date From</label>
+                                <input type="date" id="filterStartDate" onchange="evaluateFilterPipeline()">
+                            </div>
+                            <div>
+                                <label>Date To</label>
+                                <input type="date" id="filterEndDate" onchange="evaluateFilterPipeline()">
+                            </div>
+                        </div>
+                        <div style="margin-bottom: 10px;">
+                            <label>Sort By</label>
+                            <select id="jobSortOrder" onchange="evaluateFilterPipeline()" style="width:100%;">
+                                <option value="newest">🆕 Newest First</option>
+                                <option value="oldest">⏳ Oldest First</option>
+                                <option value="latestUpdate">🔄 Latest Update First</option>
+                                <option value="jobNumDesc">🔢 Job # (High → Low)</option>
+                                <option value="jobNumAsc">🔢 Job # (Low → High)</option>
+                                <option value="customerAz">🔤 Customer (A → Z)</option>
+                                <option value="customerZa">🔤 Customer (Z → A)</option>
+                            </select>
+                        </div>
+                        <div class="filter-pill-box">
+                            <div class="filter-pill active" onclick="setStatusFilter('ALL', this)">All Tasks</div>
+                            <div class="filter-pill" onclick="setStatusFilter('Pending', this)">Pending</div>
+                            <div class="filter-pill" onclick="setStatusFilter('Pending for Quotation', this)">Pending for Quotation</div>
+                            <div class="filter-pill" onclick="setStatusFilter('Ongoing', this)">Ongoing</div>
+                            <div class="filter-pill" onclick="setStatusFilter('Warranty Pending', this)">Warranty Pending</div>
+                            <div class="filter-pill" onclick="setStatusFilter('Customer Hold', this)">Customer Hold</div>
+                            <div class="filter-pill" onclick="setStatusFilter('Completed', this)">Completed</div>
+                            <div class="filter-pill" onclick="setStatusFilter('Cant Repair', this)">Cant Repair</div>
+                            <div class="filter-pill" onclick="setStatusFilter('Returned', this)">Returned</div>
+                            <div class="filter-pill" onclick="setStatusFilter('Warranty Claimed', this)">Warranty Claimed</div>
+                        </div>
+                    </div>
+                </div>
+
                 <div class="queue-utility-header">
                     <div style="font-size:13px; color:var(--text-muted);">Active Items in View: <span id="visibleJobsCount">0</span> cards</div>
                     <button class="btn-refresh-queue" onclick="manualJobQueueRefreshTrigger()">🔄 Refresh Task Queue</button>
@@ -694,6 +724,30 @@
 
     function setStatusFilter(status, pillElement) { document.querySelectorAll('.filter-pill').forEach(p => p.classList.remove('active')); pillElement.classList.add('active'); currentSelectedStatusFilter = status; evaluateFilterPipeline(); }
 
+    // Collapses/expands the Controls & Sorting Matrix panel — mirrors the
+    // same open/close pattern used by the SAP14 Pending and Team panels.
+    function toggleControlsMatrixPanel() {
+        const body = document.getElementById('controlsMatrixBody');
+        const toggle = document.getElementById('controlsMatrixToggle');
+        const isOpen = body.classList.contains('open');
+        body.classList.toggle('open', !isOpen);
+        toggle.classList.toggle('open', !isOpen);
+    }
+
+    // Clears search text, date range, sort order, and status pill back to
+    // their defaults in one click, then re-runs the pipeline so the queue
+    // reflects the reset state immediately.
+    function resetFilterControls() {
+        document.getElementById('searchBarInput').value = '';
+        setDefaultDateConstraints();
+        document.getElementById('jobSortOrder').value = 'newest';
+        document.querySelectorAll('.filter-pill').forEach(p => p.classList.remove('active'));
+        const allPill = document.querySelector('.filter-pill');
+        if (allPill) allPill.classList.add('active');
+        currentSelectedStatusFilter = "ALL";
+        evaluateFilterPipeline();
+    }
+
     function evaluateFilterPipeline() {
         const query = document.getElementById('searchBarInput').value.toLowerCase().trim();
         const startVal = document.getElementById('filterStartDate').value;
@@ -739,6 +793,51 @@
             console.warn('Duplicate job number(s) detected in the Jobs sheet — please check and remove the duplicate row(s):', Array.from(duplicateJobNums));
         }
 
+        // ── Sort order ────────────────────────────────────────────────────
+        const sortOrderEl = document.getElementById('jobSortOrder');
+        const sortOrder = sortOrderEl ? sortOrderEl.value : 'newest';
+
+        // "Latest Update" needs a per-job activity timestamp, which isn't on
+        // the job record itself — it's built from the live notification feed
+        // (sourced from StatusLogs), so pick out each job's most recent
+        // status-change timestamp here. Jobs with no notification history yet
+        // fall back to their creation date so they still sort sensibly.
+        let latestUpdateMap = null;
+        if (sortOrder === 'latestUpdate') {
+            latestUpdateMap = new Map();
+            (notifFeedCache || []).forEach(n => {
+                const t = new Date(n.timestamp).getTime();
+                if (isNaN(t)) return;
+                const existing = latestUpdateMap.get(n.jobNum);
+                if (existing === undefined || t > existing) latestUpdateMap.set(n.jobNum, t);
+            });
+        }
+        const resolveActivityTime = (job) => {
+            if (latestUpdateMap && latestUpdateMap.has(job.jobNum)) return latestUpdateMap.get(job.jobNum);
+            const created = new Date(job.createdDateIso || 0).getTime();
+            return isNaN(created) ? 0 : created;
+        };
+
+        filtered.sort((a, b) => {
+            switch (sortOrder) {
+                case 'oldest':
+                    return String(a.createdDateIso || '').localeCompare(String(b.createdDateIso || ''));
+                case 'jobNumDesc':
+                    return b.jobNum - a.jobNum;
+                case 'jobNumAsc':
+                    return a.jobNum - b.jobNum;
+                case 'customerAz':
+                    return String(a.customer || '').localeCompare(String(b.customer || ''));
+                case 'customerZa':
+                    return String(b.customer || '').localeCompare(String(a.customer || ''));
+                case 'latestUpdate':
+                    return resolveActivityTime(b) - resolveActivityTime(a);
+                case 'newest':
+                default:
+                    return String(b.createdDateIso || '').localeCompare(String(a.createdDateIso || ''));
+            }
+        });
+
         document.getElementById('visibleJobsCount').innerText = filtered.length;
         if(filtered.length === 0) { container.innerHTML = `<div style="text-align:center; color:var(--text-muted); padding:20px;">No matching records within this timeline window.</div>`; return; }
 
@@ -764,6 +863,17 @@
         Array.from(container.children).forEach(child => {
             const id = parseInt(child.id.replace('card-', ''));
             if (!filtered.some(j => j.jobNum === id)) child.remove();
+        });
+
+        // ── Reorder DOM to match the chosen sort order ──────────────────────
+        // Cards are created/updated in place above, so existing cards keep
+        // their old position unless explicitly moved. appendChild() on a
+        // node that's already in the DOM relocates it rather than
+        // duplicating it, so walking the sorted list and re-appending each
+        // card puts the whole deck back in the right order.
+        filtered.forEach(job => {
+            const cardElement = document.getElementById(`card-${job.jobNum}`);
+            if (cardElement) container.appendChild(cardElement);
         });
     }
 
@@ -1513,7 +1623,13 @@ function handleMultiImageProcessing(inputElement, jobNum) {
         fetch(`${WEB_APP_URL}?action=getJobHistory&jobNum=${jobNum}`).then(res => res.json()).then(data => {
             if(!data.success || data.history.length === 0) { stream.innerHTML = `<div class="feed-empty">No activity yet — updates will appear here like comments.</div>`; return; }
             // Newest first, so a technician watching the feed sees the latest status right away.
-            const ordered = data.history.slice().reverse();
+            // Sort by the actual parsed timestamp rather than assuming the backend's
+            // row order — this stays correct even if the sheet/API order ever changes.
+            const raw = data.history.slice();
+            const allTimestampsParseable = raw.every(log => !isNaN(new Date(log.timestamp).getTime()));
+            const ordered = allTimestampsParseable
+                ? raw.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
+                : raw.reverse(); // fallback: sheet rows are appended oldest→newest, so reversing puts newest first
             let feedHtml = "";
             ordered.forEach(log => {
                 let imagesHtml = "";
