@@ -473,6 +473,20 @@
 <script>
     const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbytDEJQNBfn1shoA5Ig5y8I1Vc4WzjuY6C451Pdte-MGZj93CcpAjUwyI050ss6cbs1/exec";
 
+    // ── XSS guard ─────────────────────────────────────────────────────────
+    // Any text that ultimately came from the Sheet/backend (customer names,
+    // fault descriptions, notes, technician names, etc.) gets routed through
+    // this before being dropped into innerHTML, so a stray "<" or "&" in a
+    // job record can never be interpreted as markup/script.
+    function escapeHtml(value) {
+        return String(value == null ? '' : value)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+
     // ── Light / Dark theme (v11.4) ───────────────────────────────────────
     // Preference is stored in localStorage so it survives reloads/logins.
     // Applied on <html> via data-theme so every CSS var swap in the
@@ -501,6 +515,7 @@
     })();
 
     let currentTechSessionName = ""; let localJobsMasterArray = []; let globalTechListCache = []; let globalWorkshopListCache = []; let dropdownDataLoaded = false;
+    let allJobsCache = []; // SAP14 Pending Jobs Panel cache — declared up here (not down near its render functions) so it's already initialized if a restored session calls enterPortal synchronously on page load
     // NEW v11.10 — profile settings state
     let currentTechSessionUsername = ""; let currentProfilePicUrl = ""; let globalProfilePicsCache = {}; let selectedProfilePicBase64 = null;
     let multipleFileUploadMasterMap = {}; let openCardStateTracker = null;
@@ -511,6 +526,27 @@
     // (entire Jobs sheet) call onto the same 8s loop, doubling backend load for
     // no real benefit.
     let techQueuePoller = null; let allJobsPoller = null; let notifPoller = null; let teamStatsPoller = null;
+
+    // ── Pause polling on hidden/background tabs ─────────────────────────────
+    // The four pollers above (8s/25s/30s/45s) keep firing even if the
+    // technician switches tabs or locks their phone, which wastes battery,
+    // mobile data, and Apps Script quota for no visible benefit. Stopping
+    // them while the tab is hidden — and doing one immediate refresh + the
+    // normal pollers again on return — keeps things fast when it matters
+    // and quiet when it doesn't.
+    document.addEventListener('visibilitychange', function () {
+        if (document.hidden) {
+            clearInterval(techQueuePoller); clearInterval(allJobsPoller); clearInterval(notifPoller); clearInterval(teamStatsPoller);
+            return;
+        }
+        if (!currentTechSessionName) return; // not logged in yet — nothing to resume
+        fetchTechWorkQueue(); fetchAllJobsData(); fetchNotifications(); fetchTeamStats();
+        clearInterval(techQueuePoller); clearInterval(allJobsPoller); clearInterval(notifPoller); clearInterval(teamStatsPoller);
+        techQueuePoller = setInterval(fetchTechWorkQueue, 8000);
+        allJobsPoller = setInterval(fetchAllJobsData, 30000);
+        notifPoller = setInterval(fetchNotifications, 25000);
+        teamStatsPoller = setInterval(fetchTeamStats, 45000);
+    });
     let currentSelectedStatusFilter = "ALL"; let metricsChartInstance = null;
     let searchIsAutofilled = false; // true while the search box just shows the tech's auto-filled name, not a real search
     let openSubTabStateTracker = {};
@@ -536,6 +572,84 @@
         document.getElementById('filterEndDate').value = formatDateString(lastDay);
     }
 
+    // ── Persist login across page refresh ───────────────────────────────────
+    // techLogin is just a one-time username/password check — the backend
+    // doesn't hand back a server session token — so "staying logged in"
+    // here means remembering the technician's identity locally and jumping
+    // straight back into the portal on the next load, the same way the app
+    // already trusts currentTechSessionName once login succeeds elsewhere.
+    // Expires after 12h (roughly a work shift) so a shared/public computer
+    // doesn't stay signed in indefinitely.
+    const SESSION_STORAGE_KEY = "smpro_tech_session";
+    const SESSION_MAX_AGE_MS = 12 * 60 * 60 * 1000; // 12 hours
+
+    function saveSession(techName, username, profilePicUrl) {
+        try {
+            localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify({
+                techName: techName, username: username, profilePicUrl: profilePicUrl, savedAt: Date.now()
+            }));
+        } catch (e) { /* storage unavailable — session just won't persist */ }
+    }
+
+    function loadSession() {
+        try {
+            const raw = localStorage.getItem(SESSION_STORAGE_KEY);
+            if (!raw) return null;
+            const session = JSON.parse(raw);
+            if (!session || !session.techName || !session.savedAt) return null;
+            if (Date.now() - session.savedAt > SESSION_MAX_AGE_MS) {
+                localStorage.removeItem(SESSION_STORAGE_KEY);
+                return null;
+            }
+            return session;
+        } catch (e) { return null; }
+    }
+
+    function clearSession() {
+        try { localStorage.removeItem(SESSION_STORAGE_KEY); } catch (e) { /* ignore */ }
+    }
+
+    // Shared by a fresh login and a restored (page-refresh) session so both
+    // paths set up the portal identically.
+    function enterPortal(techName, username, profilePicUrl) {
+        // ── Hard-clear all previous session state before loading new tech data ──
+        clearInterval(techQueuePoller); clearInterval(allJobsPoller); clearInterval(notifPoller); clearInterval(teamStatsPoller);
+        localJobsMasterArray = [];
+        leaderboardCache = []; myStatsCache = null; kudosFeedCache = [];
+        allJobsCache = [];
+        updatePendingNewsBar([]);
+        multipleFileUploadMasterMap = {};
+        openCardStateTracker = null;
+        openSubTabStateTracker = {};
+        currentSelectedStatusFilter = "ALL";
+        document.getElementById('queueContainer').innerHTML = "";
+        document.getElementById('ajList').innerHTML = '<div class="alljobs-empty">Loading...</div>';
+        document.getElementById('ajBadge').textContent = "0";
+        document.querySelectorAll('.filter-pill').forEach((p, i) => p.classList.toggle('active', i === 0));
+
+        currentTechSessionName = techName; document.getElementById('loggedTechName').innerText = currentTechSessionName;
+        currentTechSessionUsername = username || ""; currentProfilePicUrl = profilePicUrl || "";
+        // Convenience: pre-fill the search box with the technician's own
+        // name so it's ready to go without an extra click. This is a
+        // display-only prefill — searchIsAutofilled keeps it from being
+        // treated as an active filter until the technician actually
+        // types something, since none of the search fields (job #,
+        // item, customer, serial, model) match a tech's own name.
+        document.getElementById('searchBarInput').value = currentTechSessionName;
+        searchIsAutofilled = true;
+        updateProfileAvatarUI();
+        document.getElementById('loginSection').style.display = "none"; document.getElementById('portalSection').style.display = "block";
+        setDefaultDateConstraints(); initMetricsChart(); loadGlobalDropdownData(); fetchTechWorkQueue(); fetchAllJobsData(); fetchNotifications(); initDesktopNotificationsDefault(); fetchTeamStats();
+        techQueuePoller = setInterval(fetchTechWorkQueue, 8000);
+        allJobsPoller = setInterval(fetchAllJobsData, 30000);
+        notifPoller = setInterval(fetchNotifications, 25000);
+        teamStatsPoller = setInterval(fetchTeamStats, 45000);
+
+        // Refreshes the 12h expiry window each time the portal is entered,
+        // whether that's a brand-new login or a restored refresh.
+        saveSession(currentTechSessionName, currentTechSessionUsername, currentProfilePicUrl);
+    }
+
     document.getElementById('loginForm').addEventListener('submit', function(e) {
         e.preventDefault();
         
@@ -549,46 +663,18 @@
         document.getElementById('loginError').style.display = "none";
 
         fetch(WEB_APP_URL, { method: 'POST', body: JSON.stringify({ action: "techLogin", username: document.getElementById('username').value, password: document.getElementById('password').value }) })
-        .then(res => res.json()).then(data => {
+        .then(res => {
+            if (!res.ok) throw new Error(`Backend returned HTTP ${res.status} (expected a JSON response — this usually means the Apps Script deployment needs attention).`);
+            return res.json();
+        }).then(data => {
             if(data.success) {
-                // ── Hard-clear all previous session state before loading new tech data ──
-                clearInterval(techQueuePoller); clearInterval(allJobsPoller); clearInterval(notifPoller); clearInterval(teamStatsPoller);
-                localJobsMasterArray = [];
-                leaderboardCache = []; myStatsCache = null; kudosFeedCache = [];
-                allJobsCache = [];
-                updatePendingNewsBar([]);
-                multipleFileUploadMasterMap = {};
-                openCardStateTracker = null;
-                openSubTabStateTracker = {};
-                currentSelectedStatusFilter = "ALL";
-                document.getElementById('queueContainer').innerHTML = "";
-                document.getElementById('ajList').innerHTML = '<div class="alljobs-empty">Loading...</div>';
-                document.getElementById('ajBadge').textContent = "0";
-                document.querySelectorAll('.filter-pill').forEach((p, i) => p.classList.toggle('active', i === 0));
-
-                currentTechSessionName = data.techName; document.getElementById('loggedTechName').innerText = currentTechSessionName;
-                currentTechSessionUsername = data.username || ""; currentProfilePicUrl = data.profilePicUrl || "";
-                // Convenience: pre-fill the search box with the technician's own
-                // name so it's ready to go without an extra click. This is a
-                // display-only prefill — searchIsAutofilled keeps it from being
-                // treated as an active filter until the technician actually
-                // types something, since none of the search fields (job #,
-                // item, customer, serial, model) match a tech's own name.
-                document.getElementById('searchBarInput').value = currentTechSessionName;
-                searchIsAutofilled = true;
-                updateProfileAvatarUI();
-                document.getElementById('loginSection').style.display = "none"; document.getElementById('portalSection').style.display = "block";
-                setDefaultDateConstraints(); initMetricsChart(); loadGlobalDropdownData(); fetchTechWorkQueue(); fetchAllJobsData(); fetchNotifications(); initDesktopNotificationsDefault(); fetchTeamStats();
-                techQueuePoller = setInterval(fetchTechWorkQueue, 8000);
-                allJobsPoller = setInterval(fetchAllJobsData, 30000);
-                notifPoller = setInterval(fetchNotifications, 25000);
-                teamStatsPoller = setInterval(fetchTeamStats, 45000);
+                enterPortal(data.techName, data.username, data.profilePicUrl);
             } else { 
                 document.getElementById('loginError').innerText = data.error; document.getElementById('loginError').style.display = "block"; 
             }
         })
         .catch(err => {
-            document.getElementById('loginError').innerText = "Network pipeline connection error.";
+            document.getElementById('loginError').innerText = "Network pipeline connection error." + (err && err.message ? " Details: " + err.message : "");
             document.getElementById('loginError').style.display = "block";
         })
         .finally(() => {
@@ -597,6 +683,21 @@
             btnText.innerText = "Login";
         });
     });
+
+    // On every page load (including a manual refresh), silently restore an
+    // unexpired session instead of showing the login screen again.
+    // Deferred with queueMicrotask (not called immediately) so it only runs
+    // once this entire <script> block has finished its first top-to-bottom
+    // pass — enterPortal() touches state declared throughout the file, and
+    // calling it synchronously mid-script trips "cannot access before
+    // initialization" errors on anything declared further down. A
+    // microtask runs before the browser paints, so there's no visible
+    // login-form flash either way.
+    function restoreSessionOnLoad() {
+        const session = loadSession();
+        if (session) enterPortal(session.techName, session.username, session.profilePicUrl);
+    }
+    queueMicrotask(restoreSessionOnLoad);
 
     function loadGlobalDropdownData() { 
         return fetch(`${WEB_APP_URL}?action=getDropdownDataMatrices`)
@@ -628,12 +729,12 @@
             const workshopSelect = cardEl.querySelector('select.target-workshop-select');
             if (techSelect && techSelect.options.length <= 1) {
                 let techOptionsHtml = `<option value="">Select Target Tech Handle</option>`;
-                globalTechListCache.forEach(tName => { techOptionsHtml += `<option value="${tName}">${tName}</option>`; });
+                globalTechListCache.forEach(tName => { techOptionsHtml += `<option value="${escapeHtml(tName)}">${escapeHtml(tName)}</option>`; });
                 techSelect.innerHTML = techOptionsHtml;
             }
             if (workshopSelect && workshopSelect.options.length <= 1) {
                 let workshopOptionsHtml = `<option value="">Select Destination Workshop</option>`;
-                globalWorkshopListCache.forEach(wName => { workshopOptionsHtml += `<option value="${wName}">${wName}</option>`; });
+                globalWorkshopListCache.forEach(wName => { workshopOptionsHtml += `<option value="${escapeHtml(wName)}">${escapeHtml(wName)}</option>`; });
                 workshopSelect.innerHTML = workshopOptionsHtml;
             }
         });
@@ -693,7 +794,7 @@
         }
 
         const itemsHtml = pending.map(j =>
-            `<span class="news-ticker-item">#${j.jobNum} — ${j.itemType || 'Item'} (${j.customer || 'N/A'}) <span class="news-ticker-days">${j.days} day${j.days === 1 ? '' : 's'}</span></span>`
+            `<span class="news-ticker-item">#${j.jobNum} — ${escapeHtml(j.itemType) || 'Item'} (${escapeHtml(j.customer) || 'N/A'}) <span class="news-ticker-days">${j.days} day${j.days === 1 ? '' : 's'}</span></span>`
         ).join('');
 
         // Duplicate the list so the CSS scroll animation loops seamlessly.
@@ -736,9 +837,14 @@
     // Fires on every keystroke in the search box. The first real edit turns
     // off the auto-fill flag so the box behaves like a normal search field
     // from then on (even if the technician types their own name back in).
+    let searchDebounceTimer = null;
     function onSearchInputChanged() {
         searchIsAutofilled = false;
-        evaluateFilterPipeline();
+        // Debounce: wait for a short pause in typing before re-running the
+        // filter/sort/DOM-diff pipeline, instead of doing it on every
+        // keystroke — noticeably smoother on longer job lists / slower phones.
+        clearTimeout(searchDebounceTimer);
+        searchDebounceTimer = setTimeout(evaluateFilterPipeline, 180);
     }
 
     // Collapses/expands the Controls & Sorting Matrix panel — mirrors the
@@ -904,10 +1010,10 @@
 
     function createCardHtmlBlueprint(job) {
         let techOptionsHtml = `<option value="">Select Target Tech Handle</option>`;
-        globalTechListCache.forEach(tName => { techOptionsHtml += `<option value="${tName}">${tName}</option>`; });
+        globalTechListCache.forEach(tName => { techOptionsHtml += `<option value="${escapeHtml(tName)}">${escapeHtml(tName)}</option>`; });
         
         let workshopOptionsHtml = `<option value="">Select Destination Workshop</option>`;
-        globalWorkshopListCache.forEach(wName => { workshopOptionsHtml += `<option value="${wName}">${wName}</option>`; });
+        globalWorkshopListCache.forEach(wName => { workshopOptionsHtml += `<option value="${escapeHtml(wName)}">${escapeHtml(wName)}</option>`; });
 
         const activeTab = openSubTabStateTracker[job.jobNum] || 'update';
 
@@ -915,18 +1021,18 @@
             <div class="job-card" id="card-${job.jobNum}">
                 <div class="job-card-header" onclick="toggleCardCollapse(${job.jobNum})">
                     <span class="job-id-title">
-                        #${job.jobNum} ➔ <strong>${job.itemType}</strong> ${job.model ? `<span style="color:var(--accent-cyan); font-size:12px;">[${job.model}]</span>` : ''} [S/N: ${job.serial || 'N/A'}] (${job.customer})
-                        <div style="color: var(--accent-red); font-weight: 800; margin-top: 4px; font-size: 12.5px;">⚠️ Fault: ${job.fault || 'Not Specified'}</div>
+                        #${job.jobNum} ➔ <strong>${escapeHtml(job.itemType)}</strong> ${job.model ? `<span style="color:var(--accent-cyan); font-size:12px;">[${escapeHtml(job.model)}]</span>` : ''} [S/N: ${escapeHtml(job.serial) || 'N/A'}] (${escapeHtml(job.customer)})
+                        <div style="color: var(--accent-red); font-weight: 800; margin-top: 4px; font-size: 12.5px;">⚠️ Fault: ${escapeHtml(job.fault) || 'Not Specified'}</div>
                         <div id="pricelines-${job.jobNum}">${buildPriceLinesHtml(job)}</div>
                         <div style="margin-top:8px; display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
                             <span id="informedBtn-${job.jobNum}" class="btn-informed-tech" title="Customer-informed count (view only)">
                                 📣 Informed <span class="informed-badge-tech">${job.informedCount || 0}</span>
                             </span>
-                            <span class="informed-last-label" id="informedLastLabel-${job.jobNum}">${job.informedLastDate ? `Last: ${job.informedLastDate}` : ''}</span>
+                            <span class="informed-last-label" id="informedLastLabel-${job.jobNum}">${job.informedLastDate ? `Last: ${escapeHtml(job.informedLastDate)}` : ''}</span>
                         </div>
                     </span>
-                    <span class="status-badge b-${job.status.replace(/\s+/g, '')}">${job.status}</span>
-                    <div class="workshop-badge" title="Assigned Workshop">🏭 ${job.workshop || 'Unassigned'}</div>
+                    <span class="status-badge b-${job.status.replace(/\s+/g, '')}">${escapeHtml(job.status)}</span>
+                    <div class="workshop-badge" title="Assigned Workshop">🏭 ${escapeHtml(job.workshop) || 'Unassigned'}</div>
                 </div>
                 <div class="job-card-body" id="body-${job.jobNum}">
                     <div class="tab-nav">
@@ -1219,9 +1325,9 @@
 
         list.innerHTML = notifFeedCache.map(n => `
             <div class="notif-item ${n.id > lastCleared ? 'unread' : ''}">
-                <div class="notif-meta"><span>Job #${n.jobNum}</span><span>${formatNotifTime(n.timestamp)}</span></div>
-                <div><strong>${n.status}</strong> — ${n.operator || ''}</div>
-                <div class="notif-note">${n.note || ''}</div>
+                <div class="notif-meta"><span>Job #${n.jobNum}</span><span>${escapeHtml(formatNotifTime(n.timestamp))}</span></div>
+                <div><strong>${escapeHtml(n.status)}</strong> — ${escapeHtml(n.operator) || ''}</div>
+                <div class="notif-note">${escapeHtml(n.note) || ''}</div>
             </div>`).join('');
     }
 
@@ -1352,7 +1458,7 @@
             return `
                 <div class="lb-row ${isMe ? 'is-me' : ''}">
                     <div class="lb-rank ${medalClass}">${rankLabel}</div>
-                    <div class="lb-name">${row.tech}${isMe ? ' (You)' : ''}</div>
+                    <div class="lb-name">${escapeHtml(row.tech)}${isMe ? ' (You)' : ''}</div>
                     <div class="lb-stats"><span><strong>${row.completedWeek}</strong> wk</span><span>${row.completedTotal} total</span></div>
                 </div>`;
         }).join('');
@@ -1365,7 +1471,7 @@
         let optionsHtml = `<option value="">Give kudos to...</option>`;
         globalTechListCache.forEach(tName => {
             if (tName === currentTechSessionName) return; // can't kudos yourself
-            optionsHtml += `<option value="${tName}">${tName}</option>`;
+            optionsHtml += `<option value="${escapeHtml(tName)}">${escapeHtml(tName)}</option>`;
         });
         select.innerHTML = optionsHtml;
         if (currentVal) select.value = currentVal;
@@ -1380,8 +1486,8 @@
         }
         wrap.innerHTML = kudosFeedCache.map(k => `
             <div class="kudos-item">
-                <div class="kudos-meta"><span>${k.fromTech} → <span class="kudos-to">${k.toTech}</span></span><span>${formatNotifTime(k.timestamp)}</span></div>
-                <div>${k.message}</div>
+                <div class="kudos-meta"><span>${escapeHtml(k.fromTech)} → <span class="kudos-to">${escapeHtml(k.toTech)}</span></span><span>${escapeHtml(formatNotifTime(k.timestamp))}</span></div>
+                <div>${escapeHtml(k.message)}</div>
             </div>`).join('');
     }
 
@@ -1508,8 +1614,14 @@ function handleMultiImageProcessing(inputElement, jobNum) {
 }
 
     function renderImageThumbnailsDeck(jobNum) {
-        const deck = document.getElementById(`preview-deck-${jobNum}`); if (!deck) return; deck.innerHTML = "";
-        (multipleFileUploadMasterMap[jobNum] || []).forEach((img, idx) => { deck.innerHTML += `<div class="preview-thumb-container"><img src="${img.base64}"><button type="button" class="remove-thumb-btn" onclick="removeImageFromDeck(${jobNum}, ${idx})">✕</button></div>`; });
+        const deck = document.getElementById(`preview-deck-${jobNum}`); if (!deck) return;
+        // Build the whole deck as one string and assign innerHTML once — doing
+        // `deck.innerHTML += ...` in a loop instead would re-parse and
+        // re-render the entire accumulated HTML on every single iteration.
+        const parts = (multipleFileUploadMasterMap[jobNum] || []).map((img, idx) =>
+            `<div class="preview-thumb-container"><img src="${img.base64}"><button type="button" class="remove-thumb-btn" onclick="removeImageFromDeck(${jobNum}, ${idx})">✕</button></div>`
+        );
+        deck.innerHTML = parts.join('');
     }
     function removeImageFromDeck(jobNum, idx) { multipleFileUploadMasterMap[jobNum].splice(idx, 1); renderImageThumbnailsDeck(jobNum); }
 
@@ -1526,8 +1638,9 @@ function handleMultiImageProcessing(inputElement, jobNum) {
     function getAvatarHtml(operatorRaw) {
         const cleanName = String(operatorRaw || '').replace(/^Tech:\s*/i, '').trim();
         const picUrl = globalProfilePicsCache[cleanName];
-        if (picUrl) return `<div class="comment-avatar" style="padding:0; overflow:hidden;"><img src="${picUrl}" class="avatar-img-round" onerror="this.parentElement.innerHTML='${getCommentInitials(cleanName)}'"></div>`;
-        return `<div class="comment-avatar">${getCommentInitials(cleanName)}</div>`;
+        const initialsHtml = escapeHtml(getCommentInitials(cleanName));
+        if (picUrl) return `<div class="comment-avatar" style="padding:0; overflow:hidden;"><img src="${escapeHtml(picUrl)}" class="avatar-img-round" onerror="this.parentElement.innerHTML='${initialsHtml.replace(/'/g, "\\'")}'"></div>`;
+        return `<div class="comment-avatar">${initialsHtml}</div>`;
     }
 
     // ── Profile Settings modal (NEW v11.10) ─────────────────────────────
@@ -1651,16 +1764,16 @@ function handleMultiImageProcessing(inputElement, jobNum) {
             let feedHtml = "";
             ordered.forEach(log => {
                 let imagesHtml = "";
-                log.images.forEach(url => { if(url) imagesHtml += `<img src="${url}" class="timeline-img-launcher" onclick="launchImageLightbox('${url}')" onerror="this.src='https://cdn-icons-png.flaticon.com/512/13434/13434972.png'">`; });
+                log.images.forEach(url => { if(url) { const safeUrl = escapeHtml(url).replace(/'/g, '&#39;'); imagesHtml += `<img src="${safeUrl}" class="timeline-img-launcher" onclick="launchImageLightbox('${safeUrl}')" onerror="this.src='https://cdn-icons-png.flaticon.com/512/13434/13434972.png'">`; } });
                 feedHtml += `<div class="comment-item">
                     ${getAvatarHtml(log.operator)}
                     <div class="comment-bubble">
                         <div class="comment-bubble-head">
-                            <span class="comment-author">${log.operator}</span>
-                            <span class="comment-status-chip b-${String(log.status).replace(/\s+/g, '')}">${log.status}</span>
-                            <span class="comment-time">⏱️ ${log.timestamp}</span>
+                            <span class="comment-author">${escapeHtml(log.operator)}</span>
+                            <span class="comment-status-chip b-${String(log.status).replace(/\s+/g, '')}">${escapeHtml(log.status)}</span>
+                            <span class="comment-time">⏱️ ${escapeHtml(log.timestamp)}</span>
                         </div>
-                        <div class="comment-notes">${log.notes || ''}</div>
+                        <div class="comment-notes">${escapeHtml(log.notes) || ''}</div>
                         ${imagesHtml ? `<div class="comment-images">${imagesHtml}</div>` : ''}
                     </div>
                 </div>`;
@@ -1746,6 +1859,7 @@ function handleMultiImageProcessing(inputElement, jobNum) {
     }
 
     function logOutSession() {
+        clearSession();
         clearInterval(techQueuePoller); clearInterval(allJobsPoller); clearInterval(notifPoller); clearInterval(teamStatsPoller);
         currentTechSessionName = "";
         currentTechSessionUsername = ""; currentProfilePicUrl = ""; globalProfilePicsCache = {}; selectedProfilePicBase64 = null;
@@ -1765,7 +1879,6 @@ function handleMultiImageProcessing(inputElement, jobNum) {
     }
 
     // ── SAP14 Pending Jobs Panel ─────────────────────────────────────────────
-    let allJobsCache = [];
 
     function toggleAllJobsPanel() {
         const body = document.getElementById('ajBody');
@@ -1806,10 +1919,10 @@ function handleMultiImageProcessing(inputElement, jobNum) {
                     <span class="aj-num">#${job.jobNum}</span>
                     <span style="font-size:10px; color:var(--text-muted);">${(job.createdTime||'').slice(0,10)}</span>
                 </div>
-                <div style="margin-top:3px;"><strong style="font-size:12px;">${job.itemType}</strong>${job.model ? ` <span style="color:var(--accent-cyan); font-size:11px; font-weight:700;">${job.model}</span>` : ''} <span style="color:var(--text-muted); font-size:11px;">— ${job.customer||''}</span></div>
-                <div class="workshop-badge" title="Assigned Workshop">🏭 ${job.workshop || 'Unassigned'}</div>
-                <div style="font-size:11px; color:#ef476f; font-weight:700; margin-top:2px;">⚠️ ${job.fault||'No fault noted'}</div>
-                <div style="font-size:11px; color:var(--text-muted); margin-top:2px;">📞 ${job.mobile||'N/A'}</div>
+                <div style="margin-top:3px;"><strong style="font-size:12px;">${escapeHtml(job.itemType)}</strong>${job.model ? ` <span style="color:var(--accent-cyan); font-size:11px; font-weight:700;">${escapeHtml(job.model)}</span>` : ''} <span style="color:var(--text-muted); font-size:11px;">— ${escapeHtml(job.customer)||''}</span></div>
+                <div class="workshop-badge" title="Assigned Workshop">🏭 ${escapeHtml(job.workshop) || 'Unassigned'}</div>
+                <div style="font-size:11px; color:#ef476f; font-weight:700; margin-top:2px;">⚠️ ${escapeHtml(job.fault)||'No fault noted'}</div>
+                <div style="font-size:11px; color:var(--text-muted); margin-top:2px;">📞 ${escapeHtml(job.mobile)||'N/A'}</div>
                 <button onclick="assignJobToSelf(${job.jobNum})" style="margin-top:8px; width:100%; padding:7px; background:var(--accent-green); color:white; border:none; border-radius:7px; font-size:12px; font-weight:700; cursor:pointer;">✅ Assign to Me</button>
             </div>`).join('');
     }
