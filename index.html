@@ -233,11 +233,57 @@
         .lb-stats { display: flex; gap: 10px; flex-shrink: 0; color: var(--text-muted); font-size: 11px; }
         .lb-stats strong { color: var(--accent-green); }
 
-        .kudos-form { display: flex; flex-direction: column; gap: 8px; margin-bottom: 14px; padding-bottom: 14px; border-bottom: 1px solid var(--border-color); }
-        .kudos-item { background: var(--bg-input); border-left: 3px solid var(--accent-orange); border-radius: 8px; padding: 10px 12px; margin-bottom: 8px; font-size: 12px; }
-        .kudos-item .kudos-meta { display: flex; justify-content: space-between; color: var(--text-muted); font-size: 10px; margin-bottom: 4px; }
-        .kudos-item .kudos-to { color: var(--accent-orange); font-weight: 800; }
+        /* ── Kudos "chat" redesign — styled like a WhatsApp thread ──────────
+           kudos-chat-scroll is the scrollable message pane (oldest at top,
+           newest at bottom, auto-scrolled down on render — same feel as a
+           messaging app). Rows align right/green for the logged-in tech's
+           own kudos ("out"), left/neutral for kudos sent TO the logged-in
+           tech ("in"), and centered as a small system-style pill for kudos
+           between two other technicians (since it isn't a 1:1 conversation
+           the current user is part of). */
+        .kudos-chat-scroll { display: flex; flex-direction: column; gap: 8px; max-height: 340px; overflow-y: auto; padding: 10px 6px; margin-bottom: 12px; background: rgba(0,0,0,0.12); border-radius: 10px; }
+        .kudos-chat-scroll::-webkit-scrollbar { width: 4px; }
+        .kudos-chat-scroll::-webkit-scrollbar-thumb { background: var(--border-color); border-radius: 4px; }
+        .kudos-msg-row { display: flex; width: 100%; }
+        .kudos-msg-row.out { justify-content: flex-end; }
+        .kudos-msg-row.in { justify-content: flex-start; }
+        .kudos-msg-row.system { justify-content: center; }
+        .kudos-bubble { max-width: 78%; padding: 8px 12px 6px; border-radius: 14px; font-size: 12.5px; line-height: 1.42; box-shadow: 0 1px 2px rgba(0,0,0,0.18); word-break: break-word; }
+        .kudos-bubble.out { background: var(--accent-green); color: #04211a; border-bottom-right-radius: 4px; }
+        .kudos-bubble.in { background: var(--bg-card); border: 1px solid var(--border-color); color: var(--text-main); border-bottom-left-radius: 4px; }
+        .kudos-bubble .kb-label { font-size: 10.5px; font-weight: 800; margin-bottom: 2px; opacity: 0.85; }
+        .kudos-bubble.in .kb-label { color: var(--accent-orange); }
+        .kudos-bubble .kb-time { font-size: 9.5px; opacity: 0.65; text-align: right; margin-top: 4px; }
+        .kudos-system-pill { background: rgba(148,163,184,0.15); color: var(--text-muted); font-size: 11px; padding: 6px 12px; border-radius: 14px; max-width: 88%; text-align: center; line-height: 1.5; }
+        .kudos-system-pill .kb-strong { color: var(--accent-orange); font-weight: 700; }
+        .kudos-form { display: flex; flex-direction: column; gap: 8px; padding-top: 12px; border-top: 1px solid var(--border-color); }
         .kudos-empty { text-align: center; color: var(--text-muted); font-size: 12px; padding: 18px 0; }
+
+        /* ── Kudos popup toast notifications (NEW) ───────────────────────── */
+        .kudos-toast-stack {
+            position: fixed; top: 16px; right: 16px; z-index: 99997;
+            display: flex; flex-direction: column; gap: 10px;
+            width: calc(100vw - 32px); max-width: 340px;
+        }
+        .kudos-toast {
+            background: linear-gradient(135deg, #06d6a0, #3a86ff);
+            color: #fff; padding: 14px 30px 14px 16px; border-radius: 14px;
+            box-shadow: 0 12px 30px rgba(0,0,0,0.35); position: relative; overflow: hidden;
+            animation: kudosToastIn 0.4s cubic-bezier(.34,1.56,.64,1);
+            font-family: 'Segoe UI', system-ui, sans-serif;
+        }
+        .kudos-toast.hide { animation: kudosToastOut 0.35s ease forwards; }
+        @keyframes kudosToastIn { 0% { transform: translateX(120%); opacity: 0; } 100% { transform: translateX(0); opacity: 1; } }
+        @keyframes kudosToastOut { 0% { transform: translateX(0); opacity: 1; } 100% { transform: translateX(120%); opacity: 0; } }
+        .kudos-toast-head { display: flex; align-items: center; gap: 8px; font-weight: 800; font-size: 13px; margin-bottom: 4px; }
+        .kudos-toast-emoji { font-size: 18px; }
+        .kudos-toast-msg { font-size: 12.5px; line-height: 1.4; opacity: 0.97; word-break: break-word; }
+        .kudos-toast-close {
+            position: absolute; top: 6px; right: 8px; background: none; border: none;
+            color: rgba(255,255,255,0.85); font-size: 16px; cursor: pointer; line-height: 1; padding: 2px;
+        }
+        .kudos-toast-bar { position: absolute; bottom: 0; left: 0; height: 3px; background: rgba(255,255,255,0.55); animation: kudosToastBar 8s linear forwards; }
+        @keyframes kudosToastBar { 0% { width: 100%; } 100% { width: 0%; } }
 
         /* Media Breakpoint Controls */
         @media (min-width: 480px) {
@@ -279,6 +325,8 @@
 <div class="theme-toggle-wrap">
     <button type="button" id="themeToggleBtn" class="btn-theme-toggle" onclick="toggleTheme()">🌙 <span id="themeToggleLabel">Dark</span></button>
 </div>
+
+<div class="kudos-toast-stack" id="kudosToastStack"></div>
 
 <div class="container">
     <div id="loginSection" class="login-card">
@@ -371,12 +419,12 @@
                         </div>
 
                         <div class="team-tab-content" id="teamTab-kudos">
+                            <div class="kudos-chat-scroll" id="kudosList"><div class="kudos-empty">Loading...</div></div>
                             <div class="kudos-form">
                                 <select id="kudosToSelect"><option value="">Give kudos to...</option></select>
                                 <textarea id="kudosMessageInput" rows="2" placeholder="Say something nice about their work..." maxlength="300"></textarea>
                                 <button type="button" class="btn" onclick="submitKudos()">👏 Send Kudos</button>
                             </div>
-                            <div id="kudosList"><div class="kudos-empty">Loading...</div></div>
                         </div>
                     </div>
                 </div>
@@ -806,7 +854,7 @@
         if (document.activeElement && (document.activeElement.tagName === "TEXTAREA" || document.activeElement.tagName === "INPUT" || document.activeElement.tagName === "SELECT")) return; 
         fetch(`${WEB_APP_URL}?action=getTechQueue&techName=${encodeURIComponent(currentTechSessionName)}`)
         .then(res => res.json()).then(data => { 
-            if(data.success) { localJobsMasterArray = data.jobs; updateChartMetrics(localJobsMasterArray); updatePendingNewsBar(localJobsMasterArray); evaluateFilterPipeline(); } 
+            if(data.success) { localJobsMasterArray = data.jobs; updatePendingNewsBar(localJobsMasterArray); evaluateFilterPipeline(); } 
         });
     }
 
@@ -819,7 +867,6 @@
         .then(res => res.json()).then(data => { 
             if(data.success) { 
                 localJobsMasterArray = data.jobs; 
-                updateChartMetrics(localJobsMasterArray); 
                 updatePendingNewsBar(localJobsMasterArray); 
                 evaluateFilterPipeline(); 
             } 
@@ -878,8 +925,12 @@
         const endVal = document.getElementById('filterEndDate').value;
         const container = document.getElementById('queueContainer');
         
-        let filtered = localJobsMasterArray.filter(job => {
-            const matchesStatus = (currentSelectedStatusFilter === "ALL" || job.status === currentSelectedStatusFilter);
+        // ── Base set: everything eligible to be seen right now, regardless
+        // of which status pill is selected. This is what the overview chart
+        // above should reflect too, so the chart's bars never show jobs that
+        // the technician can't actually find in the queue below (e.g. jobs
+        // outside the Date From/To window, or already handed over).
+        let baseFiltered = localJobsMasterArray.filter(job => {
             const matchesSearch = (!query
                 || String(job.jobNum || '').toLowerCase().includes(query)
                 || String(job.itemType || '').toLowerCase().includes(query)
@@ -894,8 +945,10 @@
             const withinDateRange = query
                 ? true
                 : ((!startVal || job.createdDateIso >= startVal) && (!endVal || job.createdDateIso <= endVal));
-            return matchesStatus && matchesSearch && notHandedOver && withinDateRange;
+            return matchesSearch && notHandedOver && withinDateRange;
         });
+
+        let filtered = baseFiltered.filter(job => (currentSelectedStatusFilter === "ALL" || job.status === currentSelectedStatusFilter));
 
         // ── Defensive de-dup ──────────────────────────────────────────────
         // Each job card is keyed by jobNum (`card-${job.jobNum}`), so if the
@@ -916,6 +969,12 @@
         if (duplicateJobNums.size > 0) {
             console.warn('Duplicate job number(s) detected in the Jobs sheet — please check and remove the duplicate row(s):', Array.from(duplicateJobNums));
         }
+
+        // Chart always mirrors the same base set (search + date range +
+        // handed-over rules) that the queue below is drawn from — just
+        // without the status pill narrowing it down to one bucket, since the
+        // chart's whole purpose is to break the base set down by status.
+        updateChartMetrics(baseFiltered);
 
         // ── Sort order ────────────────────────────────────────────────────
         const sortOrderEl = document.getElementById('jobSortOrder');
@@ -1355,6 +1414,76 @@
     });
     // ─────────────────────────────────────────────────────────────────────────
 
+    // ── Kudos popup toast notifications (NEW) ───────────────────────────────
+    // Watermark is keyed per technician (by username, falling back to name)
+    // so switching accounts on the same device/browser never shows one
+    // tech's kudos as a popup to a different tech who logs in after them.
+    const KUDOS_POPUP_SEEN_PREFIX = 'sap_kudos_popup_seen_';
+
+    function kudosPopupWatermarkKey() {
+        return KUDOS_POPUP_SEEN_PREFIX + (currentTechSessionUsername || currentTechSessionName || 'anon');
+    }
+    function getKudosPopupWatermark() {
+        var v = localStorage.getItem(kudosPopupWatermarkKey());
+        return v ? Number(v) : null;
+    }
+    function setKudosPopupWatermark(ts) {
+        try { localStorage.setItem(kudosPopupWatermarkKey(), String(ts)); } catch (e) { /* storage unavailable */ }
+    }
+
+    function showKudosToast(fromTech, message) {
+        var stack = document.getElementById('kudosToastStack');
+        if (!stack) return;
+        var toast = document.createElement('div');
+        toast.className = 'kudos-toast';
+        toast.innerHTML =
+            '<button type="button" class="kudos-toast-close" onclick="dismissKudosToast(this.parentElement)">✕</button>' +
+            '<div class="kudos-toast-head"><span class="kudos-toast-emoji">👏</span> Kudos from ' + escapeHtml(fromTech) + '</div>' +
+            '<div class="kudos-toast-msg">' + escapeHtml(message) + '</div>' +
+            '<div class="kudos-toast-bar"></div>';
+        stack.appendChild(toast);
+        setTimeout(function () { dismissKudosToast(toast); }, 8000);
+    }
+
+    function dismissKudosToast(toastEl) {
+        if (!toastEl || !toastEl.parentElement) return;
+        toastEl.classList.add('hide');
+        setTimeout(function () { if (toastEl.parentElement) toastEl.remove(); }, 350);
+    }
+
+    // Called every time the kudos feed is refreshed (see fetchTeamStats()).
+    // Compares against a local "last seen" timestamp so a kudos only ever
+    // pops up once, and — the first time this runs for a technician — sets
+    // the watermark to "now" instead of popping every historical kudos at
+    // once. Capped to the 5 most recent so returning after a long absence
+    // doesn't flood the screen, matching the existing desktop-notification cap.
+    function checkForNewKudosPopups(list) {
+        if (!currentTechSessionName || !Array.isArray(list) || list.length === 0) return;
+
+        var watermark = getKudosPopupWatermark();
+        if (watermark === null) { setKudosPopupWatermark(Date.now()); return; }
+
+        var me = String(currentTechSessionName).trim().toLowerCase();
+        var fresh = list.filter(function (k) {
+            var toMe = String(k.toTech || '').trim().toLowerCase() === me;
+            var notFromMe = String(k.fromTech || '').trim().toLowerCase() !== me;
+            var t = new Date(k.timestamp).getTime();
+            return toMe && notFromMe && !isNaN(t) && t > watermark;
+        }).sort(function (a, b) { return new Date(a.timestamp) - new Date(b.timestamp); });
+
+        if (fresh.length === 0) return;
+
+        var toShow = fresh.slice(-5);
+        var maxTs = watermark;
+        toShow.forEach(function (k, i) {
+            setTimeout(function () { showKudosToast(k.fromTech, k.message); }, i * 350);
+            var t = new Date(k.timestamp).getTime();
+            if (t > maxTs) maxTs = t;
+        });
+        setKudosPopupWatermark(maxTs);
+    }
+    // ─────────────────────────────────────────────────────────────────────────
+
     // ── Team & Recognition Panel (v11.5, NEW) ───────────────────────────────
     // Leaderboard + personal performance stats + kudos feed, all served from
     // one combined getTeamStats call. Badges are computed here on the client
@@ -1381,6 +1510,11 @@
             document.getElementById('teamTab-' + t).classList.toggle('active', t === tab);
             document.getElementById('teamTabBtn-' + t).classList.toggle('active', t === tab);
         });
+        // Jump the kudos thread to the newest message, same as opening a chat.
+        if (tab === 'kudos') {
+            const wrap = document.getElementById('kudosList');
+            if (wrap) wrap.scrollTop = wrap.scrollHeight;
+        }
     }
 
     function fetchTeamStats() {
@@ -1392,6 +1526,7 @@
             leaderboardCache = data.leaderboard || [];
             myStatsCache = data.myStats || null;
             kudosFeedCache = data.kudos || [];
+            checkForNewKudosPopups(kudosFeedCache);
             renderMyStats();
             renderLeaderboard();
             renderKudosFeed();
@@ -1443,6 +1578,14 @@
         }
     }
 
+    // Names excluded from the repair leaderboard — lowercase substring match
+    // against the technician name. Jobs are routed to a front-desk/handover
+    // role (e.g. "Front Officer") right before closeout so the customer can
+    // be checked out, so that name would otherwise show up with every job
+    // ever closed even though it isn't the person who did the repair. Add
+    // any other non-repair handover names here the same way.
+    const EXCLUDED_LEADERBOARD_NAMES = ['front officer'];
+
     function renderLeaderboard() {
         const wrap = document.getElementById('leaderboardList');
         if (!wrap) return;
@@ -1450,9 +1593,45 @@
             wrap.innerHTML = '<div class="alljobs-empty">No completed jobs logged yet.</div>';
             return;
         }
+
+        // ── De-dup + re-sort defensively on the client ──────────────────────
+        // The backend (getTeamStats) is the source of truth for the numbers,
+        // but if it ever returns two rows for the same technician (e.g. their
+        // name was logged with a trailing space or different casing on some
+        // job records — "John Silva" vs "John Silva " vs "john silva") each
+        // spelling would collect its own partial count, so a busy tech could
+        // end up split across two low-looking rows instead of one accurate
+        // one, or the row order sent by the backend might not actually be
+        // sorted. Both would produce exactly the symptom of "a technician who
+        // completed more jobs isn't showing near the top" — so this merges
+        // same-technician rows (matched by trimmed/case-insensitive name) and
+        // always re-sorts by completedTotal (then completedWeek) before
+        // rendering, regardless of what order the backend sent.
+        const mergedByKey = new Map();
+        leaderboardCache.forEach(row => {
+            const displayName = String(row.tech || '').trim();
+            const key = displayName.toLowerCase();
+            if (!key) return;
+            if (EXCLUDED_LEADERBOARD_NAMES.some(excluded => key.includes(excluded))) return;
+            const existing = mergedByKey.get(key);
+            if (existing) {
+                existing.completedWeek += Number(row.completedWeek) || 0;
+                existing.completedTotal += Number(row.completedTotal) || 0;
+            } else {
+                mergedByKey.set(key, {
+                    tech: displayName,
+                    completedWeek: Number(row.completedWeek) || 0,
+                    completedTotal: Number(row.completedTotal) || 0
+                });
+            }
+        });
+        const mergedRows = Array.from(mergedByKey.values()).sort((a, b) =>
+            b.completedTotal - a.completedTotal || b.completedWeek - a.completedWeek || a.tech.localeCompare(b.tech)
+        );
+
         const medals = ['medal-1', 'medal-2', 'medal-3'];
-        wrap.innerHTML = leaderboardCache.map((row, i) => {
-            const isMe = row.tech === currentTechSessionName;
+        wrap.innerHTML = mergedRows.map((row, i) => {
+            const isMe = row.tech.toLowerCase() === String(currentTechSessionName || '').trim().toLowerCase();
             const medalClass = medals[i] || '';
             const rankLabel = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : (i + 1);
             return `
@@ -1477,6 +1656,14 @@
         if (currentVal) select.value = currentVal;
     }
 
+    // Renders the kudos feed as a chat thread. The logged-in technician is
+    // always the "sender" perspective — their own kudos appear as green,
+    // right-aligned outgoing bubbles (like a messaging app), kudos sent TO
+    // them appear as left-aligned incoming bubbles, and kudos between two
+    // OTHER technicians (not involving the logged-in tech at all) show as a
+    // small centered system-style note, since those aren't part of "your"
+    // conversation. Sorted oldest → newest and scrolled to the bottom so
+    // the newest kudos is always in view, same as opening a chat.
     function renderKudosFeed() {
         const wrap = document.getElementById('kudosList');
         if (!wrap) return;
@@ -1484,11 +1671,32 @@
             wrap.innerHTML = '<div class="kudos-empty">No shoutouts yet — be the first to send one!</div>';
             return;
         }
-        wrap.innerHTML = kudosFeedCache.map(k => `
-            <div class="kudos-item">
-                <div class="kudos-meta"><span>${escapeHtml(k.fromTech)} → <span class="kudos-to">${escapeHtml(k.toTech)}</span></span><span>${escapeHtml(formatNotifTime(k.timestamp))}</span></div>
-                <div>${escapeHtml(k.message)}</div>
-            </div>`).join('');
+        const me = String(currentTechSessionName || '').trim().toLowerCase();
+        const ordered = kudosFeedCache.slice().sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+        wrap.innerHTML = ordered.map(k => {
+            const fromMe = String(k.fromTech || '').trim().toLowerCase() === me;
+            const toMe = String(k.toTech || '').trim().toLowerCase() === me;
+            const timeLabel = escapeHtml(formatNotifTime(k.timestamp));
+            if (fromMe) {
+                return `<div class="kudos-msg-row out"><div class="kudos-bubble out">
+                    <div class="kb-label">To ${escapeHtml(k.toTech)}</div>
+                    <div>${escapeHtml(k.message)}</div>
+                    <div class="kb-time">${timeLabel}</div>
+                </div></div>`;
+            }
+            if (toMe) {
+                return `<div class="kudos-msg-row in"><div class="kudos-bubble in">
+                    <div class="kb-label">${escapeHtml(k.fromTech)}</div>
+                    <div>${escapeHtml(k.message)}</div>
+                    <div class="kb-time">${timeLabel}</div>
+                </div></div>`;
+            }
+            return `<div class="kudos-msg-row system"><div class="kudos-system-pill">
+                <span class="kb-strong">${escapeHtml(k.fromTech)}</span> → <span class="kb-strong">${escapeHtml(k.toTech)}</span><br>
+                ${escapeHtml(k.message)} <span style="opacity:0.7;">· ${timeLabel}</span>
+            </div></div>`;
+        }).join('');
+        wrap.scrollTop = wrap.scrollHeight;
     }
 
     function submitKudos() {
