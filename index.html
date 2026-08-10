@@ -575,6 +575,29 @@
     // no real benefit.
     let techQueuePoller = null; let allJobsPoller = null; let notifPoller = null; let teamStatsPoller = null;
 
+    // ── Egress-reduction layer (Supabase free-tier bandwidth is finite) ─────
+    // Two independent guards, on top of the existing visibility-pause above:
+    //   1. In-flight guards — never let a poller fire a new request while the
+    //      previous one for that same endpoint is still in the air. On a slow
+    //      connection this used to let requests stack up, each one still
+    //      billing egress even if its response arrived too late to matter.
+    //   2. Idle-aware throttling — the tech is logged in and the tab is
+    //      visible, but they haven't touched the screen in a while (reading a
+    //      job, walking around with the phone in a pocket, etc). In that
+    //      state every poller backs off to IDLE_POLL_MULTIPLIER× its normal
+    //      interval. Any touch/click/key/scroll immediately clears idle and
+    //      pollers snap back to full speed — nothing here delays a tech who
+    //      is actively working the queue.
+    let techQueueFetchInFlight = false, allJobsFetchInFlight = false, notifFetchInFlight = false, teamStatsFetchInFlight = false;
+    let lastTechQueuePollTs = 0, lastAllJobsPollTs = 0, lastNotifPollTs = 0, lastTeamStatsPollTs = 0;
+    let lastActivityTs = Date.now();
+    const IDLE_THRESHOLD_MS = 3 * 60 * 1000;   // 3 min with no touch/click/key/scroll = idle
+    const IDLE_POLL_MULTIPLIER = 3;            // idle pollers effectively run 3x slower
+    ['mousemove', 'keydown', 'touchstart', 'click', 'scroll'].forEach(function (evt) {
+        document.addEventListener(evt, function () { lastActivityTs = Date.now(); }, { passive: true });
+    });
+    function isTechIdle() { return (Date.now() - lastActivityTs) > IDLE_THRESHOLD_MS; }
+
     // ── Pause polling on hidden/background tabs ─────────────────────────────
     // The four pollers above (8s/25s/30s/45s) keep firing even if the
     // technician switches tabs or locks their phone, which wastes battery,
@@ -747,7 +770,33 @@
     }
     queueMicrotask(restoreSessionOnLoad);
 
-    function loadGlobalDropdownData() { 
+    // Technicians, workshops, and profile pics barely ever change — they were
+    // previously re-fetched in full on every single login and every restored
+    // session (page refresh), which on a 12h session window can mean several
+    // identical downloads a shift for data that's still the same. Cached in
+    // localStorage for DROPDOWN_CACHE_MAX_AGE_MS; a cache hit costs zero
+    // network egress. Pass forceRefresh=true to bypass (not currently wired
+    // to any UI, but available if a "refresh dropdowns" action is ever added).
+    const DROPDOWN_CACHE_KEY = 'smpro_dropdown_cache_v1';
+    const DROPDOWN_CACHE_MAX_AGE_MS = 30 * 60 * 1000; // 30 minutes
+    function loadGlobalDropdownData(forceRefresh) {
+        if (!forceRefresh) {
+            try {
+                const raw = localStorage.getItem(DROPDOWN_CACHE_KEY);
+                if (raw) {
+                    const cached = JSON.parse(raw);
+                    if (cached && cached.ts && (Date.now() - cached.ts) < DROPDOWN_CACHE_MAX_AGE_MS) {
+                        globalTechListCache = cached.technicians || [];
+                        globalWorkshopListCache = cached.workshops || [];
+                        globalProfilePicsCache = cached.profilePics || {};
+                        dropdownDataLoaded = true;
+                        refreshDropdownOptionsOnExistingCards();
+                        populateKudosToSelect();
+                        return Promise.resolve();
+                    }
+                }
+            } catch (e) { /* corrupted/unavailable cache — fall through to network fetch */ }
+        }
         return fetch(`${WEB_APP_URL}?action=getDropdownDataMatrices`)
         .then(res => res.json())
         .then(data => { 
@@ -756,6 +805,12 @@
                 globalWorkshopListCache = data.workshops || []; 
                 globalProfilePicsCache = data.profilePics || {};
                 dropdownDataLoaded = true;
+                try {
+                    localStorage.setItem(DROPDOWN_CACHE_KEY, JSON.stringify({
+                        technicians: globalTechListCache, workshops: globalWorkshopListCache,
+                        profilePics: globalProfilePicsCache, ts: Date.now()
+                    }));
+                } catch (e) { /* storage unavailable — cache just won't persist */ }
                 // Refresh the tech/workshop <select> options on any cards that were
                 // already built (e.g. if fetchTechWorkQueue's response happened to
                 // arrive before this one), regardless of whether a card is open.
@@ -852,10 +907,13 @@
 
     function fetchTechWorkQueue() {
         if (document.activeElement && (document.activeElement.tagName === "TEXTAREA" || document.activeElement.tagName === "INPUT" || document.activeElement.tagName === "SELECT")) return; 
+        if (techQueueFetchInFlight) return; // previous call hasn't returned yet — don't stack another
+        if (isTechIdle() && (Date.now() - lastTechQueuePollTs) < 8000 * IDLE_POLL_MULTIPLIER) return;
+        techQueueFetchInFlight = true; lastTechQueuePollTs = Date.now();
         fetch(`${WEB_APP_URL}?action=getTechQueue&techName=${encodeURIComponent(currentTechSessionName)}`)
         .then(res => res.json()).then(data => { 
             if(data.success) { localJobsMasterArray = data.jobs; updatePendingNewsBar(localJobsMasterArray); evaluateFilterPipeline(); } 
-        });
+        }).finally(() => { techQueueFetchInFlight = false; });
     }
 
     function manualJobQueueRefreshTrigger() {
@@ -1247,10 +1305,13 @@
     }
 
     function fetchNotifications() {
+        if (notifFetchInFlight) return;
+        if (isTechIdle() && (Date.now() - lastNotifPollTs) < 25000 * IDLE_POLL_MULTIPLIER) return;
+        notifFetchInFlight = true; lastNotifPollTs = Date.now();
         fetch(`${WEB_APP_URL}?action=getNotifications`)
         .then(res => res.json())
         .then(data => { if (data.success) { notifFeedCache = data.notifications; renderNotifPanel(); maybeFireDesktopNotifications(notifFeedCache); } })
-        .catch(() => {});
+        .catch(() => {}).finally(() => { notifFetchInFlight = false; });
     }
 
     // ── Chrome Desktop Notifications (default ON) ───────────────────────────
@@ -1519,6 +1580,9 @@
 
     function fetchTeamStats() {
         if (!currentTechSessionName) return;
+        if (teamStatsFetchInFlight) return;
+        if (isTechIdle() && (Date.now() - lastTeamStatsPollTs) < 45000 * IDLE_POLL_MULTIPLIER) return;
+        teamStatsFetchInFlight = true; lastTeamStatsPollTs = Date.now();
         fetch(`${WEB_APP_URL}?action=getTeamStats&techName=${encodeURIComponent(currentTechSessionName)}`)
         .then(res => res.json())
         .then(data => {
@@ -1532,7 +1596,7 @@
             renderKudosFeed();
             populateKudosToSelect();
         })
-        .catch(() => {});
+        .catch(() => {}).finally(() => { teamStatsFetchInFlight = false; });
     }
 
     function computeBadges(stats) {
@@ -1847,7 +1911,7 @@ function handleMultiImageProcessing(inputElement, jobNum) {
         const cleanName = String(operatorRaw || '').replace(/^Tech:\s*/i, '').trim();
         const picUrl = globalProfilePicsCache[cleanName];
         const initialsHtml = escapeHtml(getCommentInitials(cleanName));
-        if (picUrl) return `<div class="comment-avatar" style="padding:0; overflow:hidden;"><img src="${escapeHtml(picUrl)}" class="avatar-img-round" onerror="this.parentElement.innerHTML='${initialsHtml.replace(/'/g, "\\'")}'"></div>`;
+        if (picUrl) return `<div class="comment-avatar" style="padding:0; overflow:hidden;"><img src="${escapeHtml(picUrl)}" loading="lazy" decoding="async" class="avatar-img-round" onerror="this.parentElement.innerHTML='${initialsHtml.replace(/'/g, "\\'")}'"></div>`;
         return `<div class="comment-avatar">${initialsHtml}</div>`;
     }
 
@@ -1935,7 +1999,7 @@ function handleMultiImageProcessing(inputElement, jobNum) {
             saveBtn.disabled = false; saveBtn.innerText = "Save Changes";
             if (data.success) {
                 if (data.profilePicUrl) { currentProfilePicUrl = data.profilePicUrl; updateProfileAvatarUI(); }
-                loadGlobalDropdownData();
+                loadGlobalDropdownData(true); // force — the tech's own profile/username just changed, cache would be stale
                 msgBox.style.background = "rgba(6,214,160,0.2)"; msgBox.style.color = "var(--accent-green)";
                 msgBox.innerText = "✅ Updated: " + data.changed.join(", ") + ".";
                 msgBox.style.display = 'block';
@@ -1956,11 +2020,29 @@ function handleMultiImageProcessing(inputElement, jobNum) {
         });
     }
 
-    function loadJobHistoryTimeline(jobNum) {
+    // Re-opening/closing the same card (or switching sub-tabs back to
+    // "Update" and back) used to re-download the full activity feed — text
+    // and image URLs — from scratch every single time, even seconds apart.
+    // A short-lived cache per job number avoids that; it's invalidated
+    // immediately by passing forceRefresh=true right after posting a new
+    // update, so nobody is ever shown stale activity.
+    const jobHistoryCache = {};
+    const JOB_HISTORY_CACHE_MAX_AGE_MS = 20 * 1000;
+    function loadJobHistoryTimeline(jobNum, forceRefresh) {
         const stream = document.getElementById(`history-stream-${jobNum}`); if(!stream) return;
+        const cached = jobHistoryCache[jobNum];
+        if (!forceRefresh && cached && (Date.now() - cached.ts) < JOB_HISTORY_CACHE_MAX_AGE_MS) {
+            stream.innerHTML = cached.html;
+            return;
+        }
         stream.innerHTML = `<div class="feed-loading">Loading activity…</div>`;
         fetch(`${WEB_APP_URL}?action=getJobHistory&jobNum=${jobNum}`).then(res => res.json()).then(data => {
-            if(!data.success || data.history.length === 0) { stream.innerHTML = `<div class="feed-empty">No activity yet — updates will appear here like comments.</div>`; return; }
+            if(!data.success || data.history.length === 0) {
+                const emptyHtml = `<div class="feed-empty">No activity yet — updates will appear here like comments.</div>`;
+                stream.innerHTML = emptyHtml;
+                jobHistoryCache[jobNum] = { html: emptyHtml, ts: Date.now() };
+                return;
+            }
             // Newest first, so a technician watching the feed sees the latest status right away.
             // Sort by the actual parsed timestamp rather than assuming the backend's
             // row order — this stays correct even if the sheet/API order ever changes.
@@ -1972,7 +2054,7 @@ function handleMultiImageProcessing(inputElement, jobNum) {
             let feedHtml = "";
             ordered.forEach(log => {
                 let imagesHtml = "";
-                log.images.forEach(url => { if(url) { const safeUrl = escapeHtml(url).replace(/'/g, '&#39;'); imagesHtml += `<img src="${safeUrl}" class="timeline-img-launcher" onclick="launchImageLightbox('${safeUrl}')" onerror="this.src='https://cdn-icons-png.flaticon.com/512/13434/13434972.png'">`; } });
+                log.images.forEach(url => { if(url) { const safeUrl = escapeHtml(url).replace(/'/g, '&#39;'); imagesHtml += `<img src="${safeUrl}" loading="lazy" decoding="async" class="timeline-img-launcher" onclick="launchImageLightbox('${safeUrl}')" onerror="this.src='https://cdn-icons-png.flaticon.com/512/13434/13434972.png'">`; } });
                 feedHtml += `<div class="comment-item">
                     ${getAvatarHtml(log.operator)}
                     <div class="comment-bubble">
@@ -1987,6 +2069,7 @@ function handleMultiImageProcessing(inputElement, jobNum) {
                 </div>`;
             });
             stream.innerHTML = feedHtml;
+            jobHistoryCache[jobNum] = { html: feedHtml, ts: Date.now() };
         });
     }
 
@@ -2004,7 +2087,7 @@ function handleMultiImageProcessing(inputElement, jobNum) {
             if(data.success) {
                 alertBox.style.background = "rgba(6,214,160,0.2)"; alertBox.style.color = "var(--accent-green)"; alertBox.innerText = "🎉 Status Logged Successfully!"; multipleFileUploadMasterMap[jobNum] = []; form.reset();
                 renderImageThumbnailsDeck(jobNum);
-                loadJobHistoryTimeline(jobNum); // new comment-style entry shows up in the feed instantly
+                loadJobHistoryTimeline(jobNum, true); // force — new comment-style entry must bypass the short-lived cache
 
                 // Reflect the change instantly — update the local cache and the
                 // card header right away instead of waiting on the next poll.
@@ -2097,6 +2180,9 @@ function handleMultiImageProcessing(inputElement, jobNum) {
     }
 
     function fetchAllJobsData() {
+        if (allJobsFetchInFlight) return;
+        if (isTechIdle() && (Date.now() - lastAllJobsPollTs) < 30000 * IDLE_POLL_MULTIPLIER) return;
+        allJobsFetchInFlight = true; lastAllJobsPollTs = Date.now();
         fetch(`${WEB_APP_URL}?action=getAdminPipeline`)
         .then(res => res.json()).then(data => {
             if(data.success) {
@@ -2104,7 +2190,7 @@ function handleMultiImageProcessing(inputElement, jobNum) {
                 allJobsCache = data.jobs.filter(j => !j.isHandedOver && j.status === 'Pending' && j.workshop === 'SAP -  Shop 14');
                 renderAllJobsPanel();
             }
-        }).catch(() => {});
+        }).catch(() => {}).finally(() => { allJobsFetchInFlight = false; });
     }
 
     function renderAllJobsPanel() {
