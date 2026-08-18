@@ -43,6 +43,24 @@
         /* Interactive Elements */
         .btn { display: inline-flex; align-items: center; justify-content: center; background-color: var(--accent-blue); color: white; padding: 12px; border: none; border-radius: 8px; cursor: pointer; font-weight: 700; text-transform: uppercase; font-size: 13px; gap: 8px; transition: opacity 0.2s; max-width: 100%; }
         .btn:disabled { opacity: 0.7; cursor: not-allowed; }
+
+        /* ── Generic action-button busy/success animation (NEW) ───────────────
+           Small inline spinner shown while a request is in flight, and a
+           quick scale-pulse when it completes successfully. Reused by every
+           action button across the portal (status update, transfer, serial
+           edit, kudos, profile save, assign-to-me, queue refresh) so the
+           feedback feels consistent everywhere. */
+        .btn-inline-spinner {
+            display: inline-block; width: 13px; height: 13px;
+            border: 2px solid rgba(255,255,255,0.35); border-top-color: #fff;
+            border-radius: 50%; animation: btnInlineSpin 0.7s linear infinite;
+            flex-shrink: 0;
+        }
+        @keyframes btnInlineSpin { to { transform: rotate(360deg); } }
+        .is-success-pulse { animation: btnSuccessPulse 0.5s cubic-bezier(.34,1.56,.64,1); }
+        @keyframes btnSuccessPulse { 0% { transform: scale(1); } 45% { transform: scale(1.07); } 100% { transform: scale(1); } }
+        .icon-spin { display: inline-block; animation: iconSpin 0.9s linear infinite; }
+        @keyframes iconSpin { to { transform: rotate(360deg); } }
         .spinner { display: none; width: 16px; height: 16px; border: 2.5px solid rgba(255,255,255,0.3); border-radius: 50%; border-top-color: white; animation: spin 0.8s linear infinite; }
         @keyframes spin { to { transform: rotate(360deg); } }
 
@@ -527,6 +545,30 @@
 <script>
     const WEB_APP_URL = "https://zrfdavacsndjspyhhfej.supabase.co/functions/v1/shop-api";
 
+    // ── Generic action-button busy/success helpers (NEW) ────────────────────
+    // Used by every action button (Post Update, Transfer, Save Changes,
+    // Send Kudos, Assign to Me, Refresh Queue, etc.) so the loading and
+    // success feedback is identical everywhere instead of some buttons
+    // just going quiet mid-request.
+    function beginBtnBusy(btn, busyLabel) {
+        if (!btn) return;
+        if (btn.dataset.origHtml === undefined) btn.dataset.origHtml = btn.innerHTML;
+        btn.disabled = true;
+        btn.classList.remove('is-success-pulse');
+        btn.innerHTML = `<span class="btn-inline-spinner"></span>${busyLabel}`;
+    }
+    function endBtnBusy(btn, restoreHtml) {
+        if (!btn) return;
+        btn.disabled = false;
+        btn.innerHTML = (restoreHtml !== undefined) ? restoreHtml : (btn.dataset.origHtml || btn.innerHTML);
+    }
+    function pulseBtnSuccess(btn) {
+        if (!btn) return;
+        btn.classList.remove('is-success-pulse');
+        void btn.offsetWidth; // restart animation even if it was just played
+        btn.classList.add('is-success-pulse');
+    }
+
     // ── XSS guard ─────────────────────────────────────────────────────────
     // Any text that ultimately came from the Sheet/backend (customer names,
     // fault descriptions, notes, technician names, etc.) gets routed through
@@ -925,7 +967,8 @@
     function manualJobQueueRefreshTrigger() {
         clearInterval(techQueuePoller);
         const refreshBtn = document.querySelector('.btn-refresh-queue');
-        refreshBtn.innerText = "🔄 Syncing...";
+        refreshBtn.disabled = true;
+        refreshBtn.innerHTML = '<span class="icon-spin">🔄</span> Syncing...';
         
         fetch(`${WEB_APP_URL}?action=getTechQueue&techName=${encodeURIComponent(currentTechSessionName)}`)
         .then(res => res.json()).then(data => { 
@@ -935,9 +978,12 @@
                 evaluateFilterPipeline(); 
             } 
             fetchAllJobsData();
+            refreshBtn.disabled = false;
+            pulseBtnSuccess(refreshBtn);
             refreshBtn.innerHTML = "🔄 Refresh Task Queue";
             techQueuePoller = setInterval(fetchTechWorkQueue, 8000);
         }).catch(() => {
+            refreshBtn.disabled = false;
             refreshBtn.innerHTML = "🔄 Refresh Task Queue";
             techQueuePoller = setInterval(fetchTechWorkQueue, 8000);
         });
@@ -1793,13 +1839,18 @@
         if (!toTech) { alert('Pick who this kudos is for.'); return; }
         if (!message) { alert('Write a quick message first.'); return; }
 
+        const sendBtn = document.querySelector('.kudos-form .btn');
+        beginBtnBusy(sendBtn, 'Sending...');
+
         fetch(WEB_APP_URL, {
             method: 'POST',
             body: JSON.stringify({ action: "postKudos", fromTech: currentTechSessionName, toTech: toTech, message: message })
         })
         .then(res => res.json())
         .then(data => {
+            endBtnBusy(sendBtn);
             if (data.success) {
+                pulseBtnSuccess(sendBtn);
                 document.getElementById('kudosMessageInput').value = '';
                 document.getElementById('kudosToSelect').value = '';
                 fetchTeamStats();
@@ -1807,7 +1858,7 @@
                 alert('Could not send kudos: ' + (data.error || 'Unknown error.'));
             }
         })
-        .catch(() => alert('Network error while sending kudos.'));
+        .catch(() => { endBtnBusy(sendBtn); alert('Network error while sending kudos.'); });
     }
     // ─────────────────────────────────────────────────────────────────────────
 
@@ -2011,7 +2062,7 @@ function handleMultiImageProcessing(inputElement, jobNum) {
         }
 
         const saveBtn = document.getElementById('profileSaveBtn');
-        saveBtn.disabled = true; saveBtn.innerText = "Saving...";
+        beginBtnBusy(saveBtn, 'Saving...');
 
         const payload = { action: "updateMyProfile", username: currentTechSessionUsername, currentPassword: currentPassword };
         if (newPassword) payload.newPassword = newPassword;
@@ -2020,8 +2071,9 @@ function handleMultiImageProcessing(inputElement, jobNum) {
         fetch(WEB_APP_URL, { method: 'POST', body: JSON.stringify(payload) })
         .then(res => res.json())
         .then(data => {
-            saveBtn.disabled = false; saveBtn.innerText = "Save Changes";
+            endBtnBusy(saveBtn, 'Save Changes');
             if (data.success) {
+                pulseBtnSuccess(saveBtn);
                 if (data.profilePicUrl) { currentProfilePicUrl = data.profilePicUrl; updateProfileAvatarUI(); }
                 loadGlobalDropdownData(true); // force — the tech's own profile/username just changed, cache would be stale
                 msgBox.style.background = "rgba(6,214,160,0.2)"; msgBox.style.color = "var(--accent-green)";
@@ -2038,7 +2090,7 @@ function handleMultiImageProcessing(inputElement, jobNum) {
             }
         })
         .catch(() => {
-            saveBtn.disabled = false; saveBtn.innerText = "Save Changes";
+            saveBtn.disabled = false; endBtnBusy(saveBtn, 'Save Changes');
             msgBox.style.background = "rgba(239,71,111,0.2)"; msgBox.style.color = "var(--accent-red)";
             msgBox.innerText = "❌ Network error. Please retry."; msgBox.style.display = 'block';
         });
@@ -2105,10 +2157,13 @@ function handleMultiImageProcessing(inputElement, jobNum) {
         const form = event.target; const status = form.getElementsByTagName('select')[0].value; const notes = form.getElementsByTagName('textarea')[0].value.trim(); const alertBox = document.getElementById(`msg-${jobNum}`);
         const totalPriceInput = document.getElementById(`totalprice-${jobNum}`);
         const totalPriceVal = totalPriceInput && totalPriceInput.value.trim() !== '' ? totalPriceInput.value.trim() : '';
+        const submitBtn = form.querySelector('button[type="submit"]');
+        beginBtnBusy(submitBtn, 'Posting...');
         alertBox.style.display = "block"; alertBox.style.background = "#1e293b"; alertBox.style.color = "#38bdf8"; alertBox.innerText = "Uploading data matrix...";
         fetch(WEB_APP_URL, { method: 'POST', body: JSON.stringify({ action: "updateJobStatus", jobNum: jobNum, status: status, tech: currentTechSessionName, notes: notes, totalPrice: totalPriceVal, images: multipleFileUploadMasterMap[jobNum]||[] }) })
         .then(res => res.json()).then(data => {
             if(data.success) {
+                pulseBtnSuccess(submitBtn);
                 alertBox.style.background = "rgba(6,214,160,0.2)"; alertBox.style.color = "var(--accent-green)"; alertBox.innerText = "🎉 Status Logged Successfully!"; multipleFileUploadMasterMap[jobNum] = []; form.reset();
                 renderImageThumbnailsDeck(jobNum);
                 loadJobHistoryTimeline(jobNum, true); // force — new comment-style entry must bypass the short-lived cache
@@ -2133,19 +2188,31 @@ function handleMultiImageProcessing(inputElement, jobNum) {
                     if (priceLines && job) priceLines.innerHTML = buildPriceLinesHtml(job);
                 }
 
-                setTimeout(() => { document.getElementById(`body-${jobNum}`).style.display = "none"; document.getElementById(`card-${jobNum}`).classList.remove('is-open'); openCardStateTracker = null; fetchTechWorkQueue(); techQueuePoller = setInterval(fetchTechWorkQueue, 8000); }, 1200);
+                setTimeout(() => { document.getElementById(`body-${jobNum}`).style.display = "none"; document.getElementById(`card-${jobNum}`).classList.remove('is-open'); openCardStateTracker = null; endBtnBusy(submitBtn); fetchTechWorkQueue(); techQueuePoller = setInterval(fetchTechWorkQueue, 8000); }, 1200);
             } else {
+                endBtnBusy(submitBtn);
                 alertBox.style.background = "rgba(239,71,111,0.2)"; alertBox.style.color = "var(--accent-red)"; alertBox.innerText = "❌ Error: " + (data.error || "Update failed."); techQueuePoller = setInterval(fetchTechWorkQueue, 8000);
             }
-        }).catch(() => { alertBox.style.background = "rgba(239,71,111,0.2)"; alertBox.style.color = "var(--accent-red)"; alertBox.innerText = "❌ Network error. Please retry."; techQueuePoller = setInterval(fetchTechWorkQueue, 8000); });
+        }).catch(() => { endBtnBusy(submitBtn); alertBox.style.background = "rgba(239,71,111,0.2)"; alertBox.style.color = "var(--accent-red)"; alertBox.innerText = "❌ Network error. Please retry."; techQueuePoller = setInterval(fetchTechWorkQueue, 8000); });
     }
 
     function executeTicketHandoverRoute(event, jobNum) {
         event.preventDefault(); clearInterval(techQueuePoller);
         const form = event.target; const targetWorkshop = form.getElementsByTagName('select')[0].value; const targetTech = form.getElementsByTagName('select')[1].value; const commentVal = form.getElementsByTagName('textarea')[0].value.trim(); const alertBox = document.getElementById(`msg-${jobNum}`);
+        const submitBtn = form.querySelector('button[type="submit"]');
+        beginBtnBusy(submitBtn, 'Re-routing...');
         alertBox.style.display = "block"; alertBox.style.background = "#1e293b"; alertBox.style.color = "var(--accent-orange)"; alertBox.innerText = "Re-routing card asset data lines...";
         fetch(WEB_APP_URL, { method: 'POST', body: JSON.stringify({ action: "techTransferJob", jobNum: jobNum, fromTech: currentTechSessionName, workshop: targetWorkshop, tech: targetTech, transferComment: commentVal }) })
-        .then(res => res.json()).then(data => { if(data.success) { alertBox.style.background = "rgba(255,159,28,0.2)"; alertBox.innerText = `🚀 Handed over to ${targetTech}!`; setTimeout(() => { document.getElementById(`card-${jobNum}`).remove(); openCardStateTracker = null; fetchTechWorkQueue(); techQueuePoller = setInterval(fetchTechWorkQueue, 8000); }, 1200); } });
+        .then(res => res.json()).then(data => {
+            if (data.success) {
+                pulseBtnSuccess(submitBtn);
+                alertBox.style.background = "rgba(255,159,28,0.2)"; alertBox.innerText = `🚀 Handed over to ${targetTech}!`;
+                setTimeout(() => { document.getElementById(`card-${jobNum}`).remove(); openCardStateTracker = null; fetchTechWorkQueue(); techQueuePoller = setInterval(fetchTechWorkQueue, 8000); }, 1200);
+            } else {
+                endBtnBusy(submitBtn);
+                alertBox.style.background = "rgba(239,71,111,0.2)"; alertBox.style.color = "var(--accent-red)"; alertBox.innerText = "❌ Error: " + (data.error || "Handover failed."); techQueuePoller = setInterval(fetchTechWorkQueue, 8000);
+            }
+        }).catch(() => { endBtnBusy(submitBtn); alertBox.style.background = "rgba(239,71,111,0.2)"; alertBox.style.color = "var(--accent-red)"; alertBox.innerText = "❌ Network error. Please retry."; techQueuePoller = setInterval(fetchTechWorkQueue, 8000); });
     }
 
     function submitSerialModelEdit(event, jobNum) {
@@ -2153,10 +2220,14 @@ function handleMultiImageProcessing(inputElement, jobNum) {
         const modelVal  = document.getElementById(`edit-model-${jobNum}`).value.trim();
         const serialVal = document.getElementById(`edit-serial-${jobNum}`).value.trim();
         const alertBox  = document.getElementById(`msg-edit-${jobNum}`);
+        const submitBtn = event.target.querySelector('button[type="submit"]');
+        beginBtnBusy(submitBtn, 'Saving...');
         alertBox.style.display = "block"; alertBox.style.background = "#1e293b"; alertBox.style.color = "#38bdf8"; alertBox.innerText = "Saving changes...";
         fetch(WEB_APP_URL, { method: 'POST', body: JSON.stringify({ action: "updateSerialModel", jobNum: jobNum, model: modelVal, serial: serialVal, tech: currentTechSessionName }) })
         .then(res => res.json()).then(data => {
+            endBtnBusy(submitBtn);
             if (data.success) {
+                pulseBtnSuccess(submitBtn);
                 alertBox.style.background = "rgba(131,56,236,0.2)"; alertBox.style.color = "var(--accent-purple)"; alertBox.innerText = "✅ Model & Serial updated successfully!";
                 // Update local cache so the card header reflects the new values without a full reload
                 const job = localJobsMasterArray.find(j => j.jobNum === jobNum);
@@ -2178,7 +2249,7 @@ function handleMultiImageProcessing(inputElement, jobNum) {
             } else {
                 alertBox.style.background = "rgba(239,71,111,0.2)"; alertBox.style.color = "var(--accent-red)"; alertBox.innerText = "❌ Error: " + (data.error || "Update failed.");
             }
-        }).catch(() => { alertBox.style.background = "rgba(239,71,111,0.2)"; alertBox.style.color = "var(--accent-red)"; alertBox.innerText = "❌ Network error. Please retry."; });
+        }).catch(() => { endBtnBusy(submitBtn); alertBox.style.background = "rgba(239,71,111,0.2)"; alertBox.style.color = "var(--accent-red)"; alertBox.innerText = "❌ Network error. Please retry."; });
     }
 
     function logOutSession() {
@@ -2249,14 +2320,13 @@ function handleMultiImageProcessing(inputElement, jobNum) {
                 <div class="workshop-badge" title="Assigned Workshop">🏭 ${escapeHtml(job.workshop) || 'Unassigned'}</div>
                 <div style="font-size:11px; color:#ef476f; font-weight:700; margin-top:2px;">⚠️ ${escapeHtml(job.fault)||'No fault noted'}</div>
                 <div style="font-size:11px; color:var(--text-muted); margin-top:2px;">📞 ${escapeHtml(job.mobile)||'N/A'}</div>
-                <button onclick="assignJobToSelf(${job.jobNum})" style="margin-top:8px; width:100%; padding:7px; background:var(--accent-green); color:white; border:none; border-radius:7px; font-size:12px; font-weight:700; cursor:pointer;">✅ Assign to Me</button>
+                <button onclick="assignJobToSelf(${job.jobNum})" style="margin-top:8px; width:100%; padding:7px; background:var(--accent-green); color:white; border:none; border-radius:7px; font-size:12px; font-weight:700; cursor:pointer; display:inline-flex; align-items:center; justify-content:center; gap:6px;">✅ Assign to Me</button>
             </div>`).join('');
     }
 
     function assignJobToSelf(jobNum) {
         const btn = event.target;
-        btn.disabled = true;
-        btn.innerText = "Assigning...";
+        beginBtnBusy(btn, 'Assigning...');
 
         // Get the job's current workshop from cache so we preserve it
         const jobData = allJobsCache.find(j => j.jobNum === jobNum);
@@ -2275,7 +2345,8 @@ function handleMultiImageProcessing(inputElement, jobNum) {
         })
         .then(res => res.json()).then(data => {
             if(data.success) {
-                btn.innerText = "✔ Assigned!";
+                pulseBtnSuccess(btn);
+                endBtnBusy(btn, "✔ Assigned!");
                 btn.style.background = "var(--accent-blue)";
                 // Remove from SAP14 cache immediately
                 allJobsCache = allJobsCache.filter(j => j.jobNum !== jobNum);
@@ -2283,10 +2354,9 @@ function handleMultiImageProcessing(inputElement, jobNum) {
                 // Refresh own queue so the job appears under the logged-in tech
                 fetchTechWorkQueue();
             } else {
-                btn.disabled = false;
-                btn.innerText = "✅ Assign to Me";
+                endBtnBusy(btn, "✅ Assign to Me");
             }
-        }).catch(() => { btn.disabled = false; btn.innerText = "✅ Assign to Me"; });
+        }).catch(() => { endBtnBusy(btn, "✅ Assign to Me"); });
     }
     // ────────────────────────────────────────────────────────────────────────
 </script>
