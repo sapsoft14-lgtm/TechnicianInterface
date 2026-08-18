@@ -287,6 +287,10 @@
         .kudos-toast-bar { position: absolute; bottom: 0; left: 0; height: 3px; background: rgba(255,255,255,0.55); animation: kudosToastBar 8s linear forwards; }
         @keyframes kudosToastBar { 0% { width: 100%; } 100% { width: 0%; } }
 
+        /* ── "Job Completed" SMS confirmation popup (NEW) ─────────────────── */
+        .sms-toast { background: linear-gradient(135deg, #06d6a0, #059669); }
+        .sms-toast.sms-toast-fail { background: linear-gradient(135deg, #ef476f, #b91c1c); }
+
         /* Media Breakpoint Controls */
         @media (min-width: 480px) {
             .job-card-header { flex-direction: row; align-items: center; }
@@ -1514,6 +1518,24 @@
         setTimeout(function () { if (toastEl.parentElement) toastEl.remove(); }, 350);
     }
 
+    // NEW: pop-in confirmation shown after a job is marked Completed, reporting
+    // whether the auto customer SMS actually went out. Reuses the same toast
+    // stack/animation as the kudos popups (slide in from the right, auto-dismiss
+    // progress bar) for a consistent feel.
+    function showSmsToast(success, message) {
+        var stack = document.getElementById('kudosToastStack');
+        if (!stack) return;
+        var toast = document.createElement('div');
+        toast.className = 'kudos-toast sms-toast' + (success ? '' : ' sms-toast-fail');
+        toast.innerHTML =
+            '<button type="button" class="kudos-toast-close" onclick="dismissKudosToast(this.parentElement)">✕</button>' +
+            '<div class="kudos-toast-head"><span class="kudos-toast-emoji">' + (success ? '📩' : '⚠️') + '</span> ' + (success ? 'Customer SMS Sent' : 'SMS Failed') + '</div>' +
+            '<div class="kudos-toast-msg">' + escapeHtml(message) + '</div>' +
+            '<div class="kudos-toast-bar"></div>';
+        stack.appendChild(toast);
+        setTimeout(function () { dismissKudosToast(toast); }, 8000);
+    }
+
     // Called every time the kudos feed is refreshed (see fetchTeamStats()).
     // Compares against a local "last seen" timestamp so a kudos only ever
     // pops up once, and — the first time this runs for a technician — sets
@@ -2090,6 +2112,14 @@ function handleMultiImageProcessing(inputElement, jobNum) {
                 alertBox.style.background = "rgba(6,214,160,0.2)"; alertBox.style.color = "var(--accent-green)"; alertBox.innerText = "🎉 Status Logged Successfully!"; multipleFileUploadMasterMap[jobNum] = []; form.reset();
                 renderImageThumbnailsDeck(jobNum);
                 loadJobHistoryTimeline(jobNum, true); // force — new comment-style entry must bypass the short-lived cache
+
+                // NEW: pop a toast reporting the auto customer SMS outcome.
+                // `data.sms` is only present when this update set the job to
+                // Completed (see updateJobStatus on the backend).
+                if (data.sms) {
+                    if (data.sms.success) showSmsToast(true, `Job #${jobNum} marked Completed — confirmation SMS sent to the customer.`);
+                    else showSmsToast(false, `Job #${jobNum} marked Completed, but the confirmation SMS could not be sent.`);
+                }
 
                 // Reflect the change instantly — update the local cache and the
                 // card header right away instead of waiting on the next poll.
