@@ -72,7 +72,13 @@
         .right-column-panel { display: flex; flex-direction: column; gap: 12px; width: 100%; min-width: 0; }
         
         .glass-card { background: var(--bg-card); padding: 16px; border-radius: 14px; border: 1px solid var(--border-color); width: 100%; overflow: hidden; }
-        .tech-profile-bar { display: flex; justify-content: space-between; align-items: center; background: var(--bg-card); padding: 12px 16px; border-radius: 14px; border: 1px solid var(--border-color); font-size: 14px; gap: 10px; width: 100%; margin-bottom: 10px; }
+        .tech-profile-bar { display: flex; justify-content: space-between; align-items: center; background: linear-gradient(120deg, var(--bg-header-alt), var(--bg-card) 70%); padding: 14px 16px; border-radius: 16px; border: 1px solid var(--border-color); box-shadow: 0 8px 20px rgba(0,0,0,0.18); font-size: 14px; gap: 10px; width: 100%; margin-bottom: 10px; position: relative; }
+        /* NOTE: intentionally no `overflow: hidden` here — the notification
+           and profile dropdowns are positioned inside this bar, and hiding
+           overflow on the bar would clip those dropdowns. The glow circle
+           below is kept just inside the box so it doesn't need clipping. */
+        .tech-profile-bar::before { content: ''; position: absolute; top: 0; right: 0; width: 160px; height: 160px; border-radius: 0 16px 0 100%; background: radial-gradient(circle at top right, rgba(58,134,255,0.22), transparent 70%); pointer-events: none; z-index: 0; }
+        .tech-profile-bar > * { position: relative; z-index: 1; }
         .chart-container { position: relative; height: 200px; width: 100%; }
         
         /* Controls & Filter Matrix Elements */
@@ -82,7 +88,8 @@
         
         /* Job Queue Deck & Containers Layout */
         .queue-scroll-container { display: flex; flex-direction: column; gap: 12px; width: 100%; min-width: 0; }
-        .job-card { background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 10px; overflow: hidden; width: 100%; display: block; }
+        .job-card { background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 12px; overflow: hidden; width: 100%; display: block; transition: border-color 0.2s, box-shadow 0.2s; }
+        .job-card:hover { box-shadow: 0 6px 18px rgba(0,0,0,0.16); }
         .job-card.is-open { border-color: var(--accent-blue); }
         
         .job-card-header { padding: 14px 16px; display: flex; flex-direction: column; justify-content: space-between; align-items: flex-start; gap: 8px; cursor: pointer; width: 100%; }
@@ -111,11 +118,11 @@
         .remove-thumb-btn { position: absolute; top: 2px; right: 2px; background: var(--accent-red); color: white; border: none; border-radius: 50%; width: 18px; height: 18px; font-size: 10px; cursor: pointer; text-align: center; padding:0; line-height: 18px; }
         
         /* Sliding Action Tab Row */
-        .tab-nav { display: flex; border-bottom: 1px solid var(--border-color); margin-bottom: 15px; gap: 5px; overflow-x: auto; white-space: nowrap; -webkit-overflow-scrolling: touch; padding-bottom: 2px; width: 100%; }
+        .tab-nav { display: flex; background: var(--bg-input); border: 1px solid var(--border-color); border-radius: 12px; margin-bottom: 15px; gap: 3px; overflow-x: auto; white-space: nowrap; -webkit-overflow-scrolling: touch; padding: 4px; width: 100%; }
         .tab-nav::-webkit-scrollbar { height: 4px; }
         .tab-nav::-webkit-scrollbar-thumb { background: var(--border-color); border-radius: 4px; }
-        .tab-btn { background: none; border: none; color: var(--text-muted); padding: 8px 12px; cursor: pointer; font-weight: bold; font-size: 12px; flex-shrink: 0; }
-        .tab-btn.active { color: var(--accent-blue); border-bottom: 2px solid var(--accent-blue); }
+        .tab-btn { background: none; border: none; border-radius: 9px; color: var(--text-muted); padding: 8px 12px; cursor: pointer; font-weight: bold; font-size: 12px; flex-shrink: 0; transition: background 0.2s, color 0.2s, box-shadow 0.2s; }
+        .tab-btn.active { color: #fff; background: linear-gradient(135deg, var(--accent-blue), #5b9dff); box-shadow: 0 3px 10px rgba(58,134,255,0.35); }
         
         .msg-alert { padding: 10px; border-radius: 8px; text-align: center; margin-top: 10px; display: none; font-size: 13px; font-weight: bold; word-break: break-word; }
         .timeline-img-launcher { width: 60px; height: 60px; object-fit: cover; border-radius: 6px; cursor: pointer; border: 1px solid var(--border-color); margin: 6px 6px 0 0; background-color: #000; }
@@ -191,8 +198,14 @@
         .notif-panel-header { display: flex; justify-content: space-between; align-items: center; padding: 10px 12px; border-bottom: 1px solid var(--border-color); font-weight: bold; font-size: 12px; color: var(--accent-cyan); position: sticky; top: 0; background: var(--bg-card); }
         .notif-panel-header button { background: var(--accent-blue); color: white; border: none; padding: 4px 10px; border-radius: 6px; font-size: 11px; cursor: pointer; font-weight: bold; }
         #desktopNotifToggleBtn.notif-desktop-on { background: var(--accent-green); }
-        .notif-item { padding: 10px 12px; border-bottom: 1px solid var(--border-color); font-size: 12px; color: var(--text-main); }
+        .notif-item { padding: 10px 12px; border-bottom: 1px solid var(--border-color); font-size: 12px; color: var(--text-main); display: flex; gap: 9px; align-items: flex-start; }
         .notif-item.unread { background: rgba(58,134,255,0.12); }
+        /* Profile-photo avatar for whoever made the update, same lookup
+           (globalProfilePicsCache) the activity feed and leaderboard use —
+           falls back to initials when no photo is on file. */
+        .notif-avatar { width: 30px; height: 30px; border-radius: 50%; overflow: hidden; flex-shrink: 0; background: var(--accent-blue); color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 11px; }
+        .notif-avatar img { width: 100%; height: 100%; object-fit: cover; }
+        .notif-body { flex: 1; min-width: 0; }
         .notif-item .notif-meta { display: flex; justify-content: space-between; color: var(--text-muted); font-size: 10px; margin-bottom: 3px; }
         .notif-item .notif-note { color: var(--text-muted); margin-top: 3px; }
         .notif-empty { text-align: center; color: var(--text-muted); font-size: 12px; padding: 22px 10px; }
@@ -236,17 +249,41 @@
         .team-tab-content.active { display: block; }
 
         .stat-mini-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px; }
-        .stat-mini-card { background: var(--bg-input); border: 1px solid var(--border-color); border-radius: 10px; padding: 10px; text-align: center; }
-        .stat-mini-value { font-size: 20px; font-weight: 800; color: var(--accent-blue); }
+        .stat-mini-card { background: var(--bg-input); border: 1px solid var(--border-color); border-radius: 12px; padding: 12px 10px 10px; text-align: center; position: relative; overflow: hidden; border-top: 3px solid var(--stat-accent, var(--accent-blue)); transition: transform 0.2s; }
+        .stat-mini-card:active { transform: scale(0.97); }
+        .stat-mini-icon { font-size: 15px; margin-bottom: 2px; display: block; opacity: 0.9; }
+        .stat-mini-value { font-size: 20px; font-weight: 800; color: var(--stat-accent, var(--accent-blue)); }
         .stat-mini-label { font-size: 10px; color: var(--text-muted); text-transform: uppercase; font-weight: 700; margin-top: 2px; }
 
+        /* ── Rank Hero card (NEW) — personal leaderboard standing at a
+           glance, with a mini progress bar toward the top weekly performer,
+           shown above the stat grid in the My Stats tab. ── */
+        .rank-hero-card { display: flex; align-items: center; gap: 12px; background: linear-gradient(135deg, rgba(58,134,255,0.16), rgba(131,56,236,0.14)); border: 1px solid var(--border-color); border-radius: 14px; padding: 12px 14px; margin-bottom: 12px; }
+        .rank-hero-num { font-size: 26px; font-weight: 900; color: var(--accent-blue); min-width: 46px; text-align: center; line-height: 1; }
+        .rank-hero-num.medal-1 { color: #ffd166; } .rank-hero-num.medal-2 { color: #c0c0c0; } .rank-hero-num.medal-3 { color: #cd7f32; }
+        .rank-hero-info { flex: 1; min-width: 0; }
+        .rank-hero-title { font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.4px; color: var(--text-muted); }
+        .rank-hero-sub { font-size: 12.5px; font-weight: 700; color: var(--text-main); margin-top: 2px; }
+        .rank-hero-bar-track { height: 5px; border-radius: 4px; background: rgba(148,163,184,0.25); margin-top: 7px; overflow: hidden; }
+        .rank-hero-bar-fill { height: 100%; border-radius: 4px; background: linear-gradient(90deg, var(--accent-blue), var(--accent-cyan)); transition: width 0.6s ease; }
+
         .badge-chip-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
-        .badge-chip { display: inline-flex; align-items: center; gap: 6px; background: var(--bg-input); border: 1px solid var(--accent-orange); color: var(--text-main); padding: 6px 10px; border-radius: 20px; font-size: 11px; font-weight: 700; }
+        .badge-chip { display: inline-flex; align-items: center; gap: 6px; background: linear-gradient(135deg, rgba(255,159,28,0.18), rgba(255,159,28,0.06)); border: 1px solid var(--accent-orange); color: var(--text-main); padding: 6px 10px; border-radius: 20px; font-size: 11px; font-weight: 700; }
         .badge-chip .b-icon { font-size: 14px; }
         .badge-empty-note { font-size: 11px; color: var(--text-muted); margin-top: 8px; }
+        /* Progress toward the next milestone badge (bronze/silver/gold),
+           shown under the earned-badges row so the goal is always visible. */
+        .badge-next-card { margin-top: 10px; background: var(--bg-input); border: 1px solid var(--border-color); border-radius: 10px; padding: 9px 11px; }
+        .badge-next-head { display: flex; align-items: center; justify-content: space-between; font-size: 11.5px; font-weight: 700; color: var(--text-main); }
+        .badge-next-head span.bn-count { color: var(--text-muted); font-weight: 600; }
+        .badge-next-bar-track { height: 6px; border-radius: 4px; background: rgba(148,163,184,0.25); margin-top: 6px; overflow: hidden; }
+        .badge-next-bar-fill { height: 100%; border-radius: 4px; background: linear-gradient(90deg, var(--accent-orange), #ffd166); transition: width 0.6s ease; }
 
-        .lb-row { display: flex; align-items: center; gap: 10px; padding: 9px 10px; border-radius: 8px; background: var(--bg-input); border: 1px solid var(--border-color); margin-bottom: 6px; font-size: 12px; }
+        .lb-row { display: flex; align-items: center; gap: 10px; padding: 9px 10px; border-radius: 10px; background: var(--bg-input); border: 1px solid var(--border-color); margin-bottom: 6px; font-size: 12px; transition: transform 0.15s; }
         .lb-row.is-me { border-color: var(--accent-blue); background: rgba(58,134,255,0.12); }
+        .lb-row.podium { border-width: 1px; background: linear-gradient(135deg, rgba(255,209,102,0.14), var(--bg-input) 55%); }
+        .lb-avatar { width: 26px; height: 26px; border-radius: 50%; overflow: hidden; flex-shrink: 0; background: var(--accent-blue); color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 10.5px; }
+        .lb-avatar img { width: 100%; height: 100%; object-fit: cover; }
         .lb-rank { font-weight: 800; width: 22px; text-align: center; flex-shrink: 0; font-size: 13px; }
         .lb-rank.medal-1 { color: #ffd166; } .lb-rank.medal-2 { color: #c0c0c0; } .lb-rank.medal-3 { color: #cd7f32; }
         .lb-name { flex: 1; min-width: 0; font-weight: 700; color: var(--text-main); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -454,11 +491,19 @@
                         </div>
 
                         <div class="team-tab-content active" id="teamTab-mystats">
+                            <div class="rank-hero-card" id="rankHeroCard" style="display:none;">
+                                <div class="rank-hero-num" id="rankHeroNum">#-</div>
+                                <div class="rank-hero-info">
+                                    <div class="rank-hero-title">Team Rank</div>
+                                    <div class="rank-hero-sub" id="rankHeroSub">Loading…</div>
+                                    <div class="rank-hero-bar-track"><div class="rank-hero-bar-fill" id="rankHeroBarFill" style="width:0%;"></div></div>
+                                </div>
+                            </div>
                             <div class="stat-mini-grid" id="myStatsGrid">
-                                <div class="stat-mini-card"><div class="stat-mini-value">--</div><div class="stat-mini-label">This Week</div></div>
-                                <div class="stat-mini-card"><div class="stat-mini-value">--</div><div class="stat-mini-label">This Month</div></div>
-                                <div class="stat-mini-card"><div class="stat-mini-value">--</div><div class="stat-mini-label">All-Time Completed</div></div>
-                                <div class="stat-mini-card"><div class="stat-mini-value">--</div><div class="stat-mini-label">Avg. Turnaround (days)</div></div>
+                                <div class="stat-mini-card" style="--stat-accent: var(--accent-orange);"><span class="stat-mini-icon">📅</span><div class="stat-mini-value">--</div><div class="stat-mini-label">This Week</div></div>
+                                <div class="stat-mini-card" style="--stat-accent: var(--accent-blue);"><span class="stat-mini-icon">🗓️</span><div class="stat-mini-value">--</div><div class="stat-mini-label">This Month</div></div>
+                                <div class="stat-mini-card" style="--stat-accent: var(--accent-purple);"><span class="stat-mini-icon">🏆</span><div class="stat-mini-value">--</div><div class="stat-mini-label">All-Time Completed</div></div>
+                                <div class="stat-mini-card" style="--stat-accent: var(--accent-green);"><span class="stat-mini-icon">⚡</span><div class="stat-mini-value">--</div><div class="stat-mini-label">Avg. Turnaround (days)</div></div>
                             </div>
                             <div id="myBadgesWrap">
                                 <div class="badge-empty-note">Loading badges...</div>
@@ -1534,9 +1579,12 @@
 
         list.innerHTML = notifFeedCache.map(n => `
             <div class="notif-item ${n.id > lastCleared ? 'unread' : ''}">
-                <div class="notif-meta"><span>Job #${n.jobNum}</span><span>${escapeHtml(formatNotifTime(n.timestamp))}</span></div>
-                <div><strong>${escapeHtml(n.status)}</strong> — ${escapeHtml(n.operator) || ''}</div>
-                <div class="notif-note">${escapeHtml(n.note) || ''}</div>
+                ${getAvatarHtmlNotif(n.operator)}
+                <div class="notif-body">
+                    <div class="notif-meta"><span>Job #${n.jobNum}</span><span>${escapeHtml(formatNotifTime(n.timestamp))}</span></div>
+                    <div><strong>${escapeHtml(n.status)}</strong> — ${escapeHtml(n.operator) || ''}</div>
+                    <div class="notif-note">${escapeHtml(n.note) || ''}</div>
+                </div>
             </div>`).join('');
     }
 
@@ -1718,35 +1766,21 @@
         return badges;
     }
 
-    function renderMyStats() {
-        const grid = document.getElementById('myStatsGrid');
-        const badgesWrap = document.getElementById('myBadgesWrap');
-        if (!grid || !badgesWrap) return;
-
-        if (!myStatsCache) {
-            grid.innerHTML = `
-                <div class="stat-mini-card"><div class="stat-mini-value">0</div><div class="stat-mini-label">This Week</div></div>
-                <div class="stat-mini-card"><div class="stat-mini-value">0</div><div class="stat-mini-label">This Month</div></div>
-                <div class="stat-mini-card"><div class="stat-mini-value">0</div><div class="stat-mini-label">All-Time Completed</div></div>
-                <div class="stat-mini-card"><div class="stat-mini-value">--</div><div class="stat-mini-label">Avg. Turnaround (days)</div></div>`;
-            badgesWrap.innerHTML = '<div class="badge-empty-note">Complete a few jobs to start earning badges!</div>';
-            return;
-        }
-
-        grid.innerHTML = `
-            <div class="stat-mini-card"><div class="stat-mini-value">${myStatsCache.completedWeek}</div><div class="stat-mini-label">This Week</div></div>
-            <div class="stat-mini-card"><div class="stat-mini-value">${myStatsCache.completedMonth}</div><div class="stat-mini-label">This Month</div></div>
-            <div class="stat-mini-card"><div class="stat-mini-value">${myStatsCache.completedTotal}</div><div class="stat-mini-label">All-Time Completed</div></div>
-            <div class="stat-mini-card"><div class="stat-mini-value">${myStatsCache.avgTurnaroundDays !== null && myStatsCache.avgTurnaroundDays !== undefined ? myStatsCache.avgTurnaroundDays : '--'}</div><div class="stat-mini-label">Avg. Turnaround (days)</div></div>`;
-
-        const badges = computeBadges(myStatsCache);
-        if (badges.length === 0) {
-            badgesWrap.innerHTML = '<div class="badge-empty-note">Complete a few jobs to start earning badges!</div>';
-        } else {
-            badgesWrap.innerHTML = '<div class="badge-chip-row">' + badges.map(b =>
-                `<span class="badge-chip"><span class="b-icon">${b.icon}</span> ${b.label}</span>`
-            ).join('') + '</div>';
-        }
+    // The three completed-jobs milestone tiers, used to show a "next badge"
+    // progress bar once the top tier hasn't been reached yet — gives techs
+    // something concrete to work toward instead of badges just appearing
+    // with no visible progress in between.
+    const MILESTONE_TIERS = [
+        { n: 10, label: 'Bronze Wrench', icon: '🥉' },
+        { n: 50, label: 'Silver Wrench', icon: '🥈' },
+        { n: 100, label: 'Gold Wrench', icon: '🥇' },
+    ];
+    function computeNextMilestone(stats) {
+        if (!stats) return null;
+        const total = Number(stats.completedTotal) || 0;
+        const next = MILESTONE_TIERS.find(t => total < t.n);
+        if (!next) return null; // already maxed out at Gold
+        return { icon: next.icon, label: next.label, current: total, target: next.n };
     }
 
     // Names excluded from the repair leaderboard — lowercase substring match
@@ -1757,29 +1791,23 @@
     // any other non-repair handover names here the same way.
     const EXCLUDED_LEADERBOARD_NAMES = ['front officer'];
 
-    function renderLeaderboard() {
-        const wrap = document.getElementById('leaderboardList');
-        if (!wrap) return;
-        if (!leaderboardCache || leaderboardCache.length === 0) {
-            wrap.innerHTML = '<div class="alljobs-empty">No completed jobs logged yet.</div>';
-            return;
-        }
-
-        // ── De-dup + re-sort defensively on the client ──────────────────────
-        // The backend (getTeamStats) is the source of truth for the numbers,
-        // but if it ever returns two rows for the same technician (e.g. their
-        // name was logged with a trailing space or different casing on some
-        // job records — "John Silva" vs "John Silva " vs "john silva") each
-        // spelling would collect its own partial count, so a busy tech could
-        // end up split across two low-looking rows instead of one accurate
-        // one, or the row order sent by the backend might not actually be
-        // sorted. Both would produce exactly the symptom of "a technician who
-        // completed more jobs isn't showing near the top" — so this merges
-        // same-technician rows (matched by trimmed/case-insensitive name) and
-        // always re-sorts by completedTotal (then completedWeek) before
-        // rendering, regardless of what order the backend sent.
+    // ── Shared de-dup + re-sort for leaderboard rows ─────────────────────────
+    // The backend (getTeamStats) is the source of truth for the numbers, but
+    // if it ever returns two rows for the same technician (e.g. their name
+    // was logged with a trailing space or different casing on some job
+    // records — "John Silva" vs "John Silva " vs "john silva") each spelling
+    // would collect its own partial count, so a busy tech could end up split
+    // across two low-looking rows instead of one accurate one, or the row
+    // order sent by the backend might not actually be sorted. Both would
+    // produce exactly the symptom of "a technician who completed more jobs
+    // isn't showing near the top" — so this merges same-technician rows
+    // (matched by trimmed/case-insensitive name) and always re-sorts by
+    // completedTotal (then completedWeek), regardless of backend order.
+    // Shared by both the leaderboard list and the rank-hero card so the two
+    // widgets can never disagree on someone's rank.
+    function mergeLeaderboardRows(rows) {
         const mergedByKey = new Map();
-        leaderboardCache.forEach(row => {
+        (rows || []).forEach(row => {
             const displayName = String(row.tech || '').trim();
             const key = displayName.toLowerCase();
             if (!key) return;
@@ -1796,23 +1824,115 @@
                 });
             }
         });
-        const mergedRows = Array.from(mergedByKey.values()).sort((a, b) =>
+        return Array.from(mergedByKey.values()).sort((a, b) =>
             b.completedTotal - a.completedTotal || b.completedWeek - a.completedWeek || a.tech.localeCompare(b.tech)
         );
+    }
+
+    // Where the logged-in tech currently stands: rank, how far behind the
+    // person directly above them, and how their week compares to the best
+    // weekly count on the team — all derived from data already fetched for
+    // the leaderboard, no extra backend call needed.
+    function computeMyRankInfo() {
+        const merged = mergeLeaderboardRows(leaderboardCache);
+        if (merged.length === 0) return null;
+        const key = String(currentTechSessionName || '').trim().toLowerCase();
+        const idx = merged.findIndex(r => r.tech.toLowerCase() === key);
+        if (idx === -1) return null;
+        const me = merged[idx];
+        const above = idx > 0 ? merged[idx - 1] : null;
+        const gap = above ? Math.max(0, above.completedTotal - me.completedTotal) : 0;
+        const topWeekly = Math.max.apply(null, merged.map(r => r.completedWeek).concat([1]));
+        return { rank: idx + 1, total: merged.length, aboveName: above ? above.tech : null, gap, myWeekly: me.completedWeek, topWeekly };
+    }
+
+    function renderRankHero() {
+        const card = document.getElementById('rankHeroCard');
+        if (!card) return;
+        const info = computeMyRankInfo();
+        if (!info) { card.style.display = 'none'; return; }
+        card.style.display = 'flex';
+        const medals = ['medal-1', 'medal-2', 'medal-3'];
+        const medalClass = medals[info.rank - 1] || '';
+        const numEl = document.getElementById('rankHeroNum');
+        const subEl = document.getElementById('rankHeroSub');
+        const barEl = document.getElementById('rankHeroBarFill');
+        numEl.className = `rank-hero-num ${medalClass}`;
+        numEl.innerText = info.rank === 1 ? '🥇' : `#${info.rank}`;
+        subEl.innerText = info.rank === 1
+            ? `Top of ${info.total} techs this period!`
+            : `${info.rank} of ${info.total} · ${info.gap} job${info.gap === 1 ? '' : 's'} behind ${info.aboveName}`;
+        const pct = Math.max(6, Math.min(100, Math.round((info.myWeekly / info.topWeekly) * 100)));
+        barEl.style.width = pct + '%';
+    }
+
+    function renderMyStats() {
+        const grid = document.getElementById('myStatsGrid');
+        const badgesWrap = document.getElementById('myBadgesWrap');
+        if (!grid || !badgesWrap) return;
+        renderRankHero();
+
+        if (!myStatsCache) {
+            grid.innerHTML = `
+                <div class="stat-mini-card" style="--stat-accent: var(--accent-orange);"><span class="stat-mini-icon">📅</span><div class="stat-mini-value">0</div><div class="stat-mini-label">This Week</div></div>
+                <div class="stat-mini-card" style="--stat-accent: var(--accent-blue);"><span class="stat-mini-icon">🗓️</span><div class="stat-mini-value">0</div><div class="stat-mini-label">This Month</div></div>
+                <div class="stat-mini-card" style="--stat-accent: var(--accent-purple);"><span class="stat-mini-icon">🏆</span><div class="stat-mini-value">0</div><div class="stat-mini-label">All-Time Completed</div></div>
+                <div class="stat-mini-card" style="--stat-accent: var(--accent-green);"><span class="stat-mini-icon">⚡</span><div class="stat-mini-value">--</div><div class="stat-mini-label">Avg. Turnaround (days)</div></div>`;
+            badgesWrap.innerHTML = '<div class="badge-empty-note">Complete a few jobs to start earning badges!</div>';
+            return;
+        }
+
+        grid.innerHTML = `
+            <div class="stat-mini-card" style="--stat-accent: var(--accent-orange);"><span class="stat-mini-icon">📅</span><div class="stat-mini-value">${myStatsCache.completedWeek}</div><div class="stat-mini-label">This Week</div></div>
+            <div class="stat-mini-card" style="--stat-accent: var(--accent-blue);"><span class="stat-mini-icon">🗓️</span><div class="stat-mini-value">${myStatsCache.completedMonth}</div><div class="stat-mini-label">This Month</div></div>
+            <div class="stat-mini-card" style="--stat-accent: var(--accent-purple);"><span class="stat-mini-icon">🏆</span><div class="stat-mini-value">${myStatsCache.completedTotal}</div><div class="stat-mini-label">All-Time Completed</div></div>
+            <div class="stat-mini-card" style="--stat-accent: var(--accent-green);"><span class="stat-mini-icon">⚡</span><div class="stat-mini-value">${myStatsCache.avgTurnaroundDays !== null && myStatsCache.avgTurnaroundDays !== undefined ? myStatsCache.avgTurnaroundDays : '--'}</div><div class="stat-mini-label">Avg. Turnaround (days)</div></div>`;
+
+        const badges = computeBadges(myStatsCache);
+        let badgesHtml = badges.length === 0
+            ? '<div class="badge-empty-note">Complete a few jobs to start earning badges!</div>'
+            : '<div class="badge-chip-row">' + badges.map(b =>
+                `<span class="badge-chip"><span class="b-icon">${b.icon}</span> ${b.label}</span>`
+              ).join('') + '</div>';
+
+        const nextMilestone = computeNextMilestone(myStatsCache);
+        if (nextMilestone) {
+            const pct = Math.max(4, Math.min(100, Math.round((nextMilestone.current / nextMilestone.target) * 100)));
+            badgesHtml += `
+                <div class="badge-next-card">
+                    <div class="badge-next-head"><span>${nextMilestone.icon} Next: ${nextMilestone.label}</span><span class="bn-count">${nextMilestone.current}/${nextMilestone.target}</span></div>
+                    <div class="badge-next-bar-track"><div class="badge-next-bar-fill" style="width:${pct}%;"></div></div>
+                </div>`;
+        }
+        badgesWrap.innerHTML = badgesHtml;
+    }
+
+    function renderLeaderboard() {
+        const wrap = document.getElementById('leaderboardList');
+        if (!wrap) return;
+        if (!leaderboardCache || leaderboardCache.length === 0) {
+            wrap.innerHTML = '<div class="alljobs-empty">No completed jobs logged yet.</div>';
+            return;
+        }
+
+        const mergedRows = mergeLeaderboardRows(leaderboardCache);
 
         const medals = ['medal-1', 'medal-2', 'medal-3'];
         wrap.innerHTML = mergedRows.map((row, i) => {
             const isMe = row.tech.toLowerCase() === String(currentTechSessionName || '').trim().toLowerCase();
             const medalClass = medals[i] || '';
+            const isPodium = i < 3;
             const rankLabel = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : (i + 1);
             return `
-                <div class="lb-row ${isMe ? 'is-me' : ''}">
+                <div class="lb-row ${isMe ? 'is-me' : ''} ${isPodium ? 'podium' : ''}">
                     <div class="lb-rank ${medalClass}">${rankLabel}</div>
+                    ${getAvatarHtmlSmall(row.tech)}
                     <div class="lb-name">${escapeHtml(row.tech)}${isMe ? ' (You)' : ''}</div>
                     <div class="lb-stats"><span><strong>${row.completedWeek}</strong> wk</span><span>${row.completedTotal} total</span></div>
                 </div>`;
         }).join('');
     }
+
 
     function populateKudosToSelect() {
         const select = document.getElementById('kudosToSelect');
@@ -2025,6 +2145,27 @@ function handleMultiImageProcessing(inputElement, jobNum) {
         const initialsHtml = escapeHtml(getCommentInitials(cleanName));
         if (picUrl) return `<div class="comment-avatar" style="padding:0; overflow:hidden;"><img src="${escapeHtml(picUrl)}" loading="lazy" decoding="async" class="avatar-img-round" onerror="this.parentElement.innerHTML='${initialsHtml.replace(/'/g, "\\'")}'"></div>`;
         return `<div class="comment-avatar">${initialsHtml}</div>`;
+    }
+
+    // Compact 26px variant of getAvatarHtml, used in the leaderboard rows
+    // where a full-size comment avatar would overwhelm the row.
+    function getAvatarHtmlSmall(operatorRaw) {
+        const cleanName = String(operatorRaw || '').replace(/^Tech:\s*/i, '').trim();
+        const picUrl = globalProfilePicsCache[cleanName];
+        const initialsHtml = escapeHtml(getCommentInitials(cleanName));
+        if (picUrl) return `<div class="lb-avatar"><img src="${escapeHtml(picUrl)}" loading="lazy" decoding="async" onerror="this.parentElement.innerHTML='${initialsHtml.replace(/'/g, "\\'")}'"></div>`;
+        return `<div class="lb-avatar">${initialsHtml}</div>`;
+    }
+
+    // 30px variant for the notification dropdown — same photo lookup as
+    // every other avatar spot, so a technician's profile picture shows up
+    // consistently across the activity feed, leaderboard, and notifications.
+    function getAvatarHtmlNotif(operatorRaw) {
+        const cleanName = String(operatorRaw || '').replace(/^Tech:\s*/i, '').trim();
+        const picUrl = globalProfilePicsCache[cleanName];
+        const initialsHtml = escapeHtml(getCommentInitials(cleanName));
+        if (picUrl) return `<div class="notif-avatar"><img src="${escapeHtml(picUrl)}" loading="lazy" decoding="async" onerror="this.parentElement.innerHTML='${initialsHtml.replace(/'/g, "\\'")}'"></div>`;
+        return `<div class="notif-avatar">${initialsHtml}</div>`;
     }
 
     // ── Profile Settings modal (NEW v11.10) ─────────────────────────────
