@@ -466,7 +466,7 @@
                 <!-- ── SAP14 Pending Jobs Panel ── -->
                 <div class="alljobs-panel">
                     <div class="alljobs-header" onclick="toggleAllJobsPanel()">
-                        <h2>📍 SAP - Shop 14 Pending <span class="alljobs-count" id="ajBadge">0</span></h2>
+                        <h2>📍 SAP - Shop 14 — All Jobs <span class="alljobs-count" id="ajBadge">0</span></h2>
                         <span class="alljobs-toggle" id="ajToggle">▼</span>
                     </div>
                     <div class="alljobs-body" id="ajBody">
@@ -2467,8 +2467,11 @@ function handleMultiImageProcessing(inputElement, jobNum) {
         fetch(`${WEB_APP_URL}?action=getAdminPipeline`)
         .then(res => res.json()).then(data => {
             if(data.success) {
-                // SAP14 location, Pending only, not handed over
-                allJobsCache = data.jobs.filter(j => !j.isHandedOver && j.status === 'Pending' && j.workshop === 'SAP -  Shop 14');
+                // SAP14 location — ALL jobs regardless of status, not handed over.
+                // Only Pending jobs are assignable (see renderAllJobsPanel /
+                // assignJobToSelf); everything else is shown read-only so the
+                // team can see what's sitting at this workshop and who's on it.
+                allJobsCache = data.jobs.filter(j => !j.isHandedOver && j.workshop === 'SAP -  Shop 14');
                 renderAllJobsPanel();
             }
         }).catch(() => {}).finally(() => { allJobsFetchInFlight = false; });
@@ -2484,31 +2487,61 @@ function handleMultiImageProcessing(inputElement, jobNum) {
         document.getElementById('ajBadge').textContent = jobs.length;
 
         if (jobs.length === 0) {
-            list.innerHTML = '<div class="alljobs-empty">No pending jobs found.</div>';
+            list.innerHTML = '<div class="alljobs-empty">No jobs found at this workshop.</div>';
             return;
         }
 
-        list.innerHTML = jobs.map(job => `
-            <div class="aj-item">
+        list.innerHTML = jobs.map(job => {
+            const isPending = job.status === 'Pending';
+            const assignedToOther = !isPending && job.tech && job.tech !== currentTechSessionName;
+
+            let priceHtml = '';
+            if (job.estimatePrice !== '' && job.estimatePrice != null) priceHtml += `<div style="color: var(--accent-orange); font-weight: 700; margin-top: 3px; font-size: 12px;">💰 Estimate: Rs. ${escapeHtml(job.estimatePrice)}</div>`;
+            if (job.totalPrice !== '' && job.totalPrice != null) priceHtml += `<div style="color: var(--accent-green); font-weight: 700; margin-top: 3px; font-size: 12px;">✅ Final Price: Rs. ${escapeHtml(job.totalPrice)}</div>`;
+
+            let actionHtml = '';
+            if (isPending) {
+                // Only Pending jobs at SAP14 can be picked up.
+                actionHtml = `<button onclick="assignJobToSelf(${job.jobNum})" style="margin-top:8px; width:100%; padding:7px; background:var(--accent-green); color:white; border:none; border-radius:7px; font-size:12px; font-weight:700; cursor:pointer; display:inline-flex; align-items:center; justify-content:center; gap:6px;">✅ Assign to Me</button>`;
+            } else if (assignedToOther) {
+                // Already in progress with someone else — clicking warns instead of assigning.
+                actionHtml = `<button onclick="warnHandoverRequest(${job.jobNum}, '${escapeHtml(job.tech).replace(/'/g, "\\'")}')" style="margin-top:8px; width:100%; padding:7px; background:var(--accent-red, #ef476f); color:white; border:none; border-radius:7px; font-size:12px; font-weight:700; cursor:pointer; display:inline-flex; align-items:center; justify-content:center; gap:6px;">🔒 Assigned to ${escapeHtml(job.tech)}</button>`;
+            } else {
+                actionHtml = `<div style="margin-top:8px; text-align:center; font-size:11px; color:var(--text-muted); font-weight:700;">🔒 Not available for assignment</div>`;
+            }
+
+            return `
+            <div class="aj-item" ${assignedToOther ? `onclick="warnHandoverRequest(${job.jobNum}, '${escapeHtml(job.tech).replace(/'/g, "\\'")}')" style="cursor:pointer;"` : ''}>
                 <div style="display:flex; justify-content:space-between; align-items:center;">
                     <span class="aj-num">#${job.jobNum}</span>
-                    <span style="font-size:10px; color:var(--text-muted);">${(job.createdTime||'').slice(0,10)}</span>
+                    <span class="status-badge b-${(job.status||'').replace(/\s+/g, '')}" style="font-size:9.5px; padding:2px 8px;">${escapeHtml(job.status)}</span>
                 </div>
                 <div style="margin-top:3px;"><strong style="font-size:12px;">${escapeHtml(job.itemType)}</strong>${job.model ? ` <span style="color:var(--accent-cyan); font-size:11px; font-weight:700;">${escapeHtml(job.model)}</span>` : ''} <span style="color:var(--text-muted); font-size:11px;">— ${escapeHtml(job.customer)||''}</span></div>
                 <div class="workshop-badge" title="Assigned Workshop">🏭 ${escapeHtml(job.workshop) || 'Unassigned'}</div>
+                ${job.tech ? `<div style="font-size:11px; color:var(--text-muted); margin-top:2px;">👤 ${escapeHtml(job.tech)}</div>` : ''}
                 <div style="font-size:11px; color:#ef476f; font-weight:700; margin-top:2px;">⚠️ ${escapeHtml(job.fault)||'No fault noted'}</div>
                 <div style="font-size:11px; color:var(--text-muted); margin-top:2px;">📞 ${escapeHtml(job.mobile)||'N/A'}</div>
-                <button onclick="assignJobToSelf(${job.jobNum})" style="margin-top:8px; width:100%; padding:7px; background:var(--accent-green); color:white; border:none; border-radius:7px; font-size:12px; font-weight:700; cursor:pointer; display:inline-flex; align-items:center; justify-content:center; gap:6px;">✅ Assign to Me</button>
-            </div>`).join('');
+                ${priceHtml}
+                ${actionHtml}
+            </div>`;
+        }).join('');
     }
 
     function assignJobToSelf(jobNum) {
         const btn = event.target;
-        beginBtnBusy(btn, 'Assigning...');
 
-        // Get the job's current workshop from cache so we preserve it
+        // Defense in depth: even though the button is only rendered for
+        // Pending jobs, re-verify against the cache before hitting the API —
+        // only Pending jobs at SAP14 may ever be assigned this way.
         const jobData = allJobsCache.find(j => j.jobNum === jobNum);
-        const jobWorkshop = jobData ? jobData.workshop : '';
+        if (!jobData || jobData.status !== 'Pending') {
+            alert('This job is no longer available for assignment — it may already be in progress with another technician.');
+            fetchAllJobsData();
+            return;
+        }
+
+        beginBtnBusy(btn, 'Assigning...');
+        const jobWorkshop = jobData.workshop;
 
         // Use adminModifyJob so the Assigned Tech column (col 7) is also updated to the logged-in tech
         fetch(WEB_APP_URL, {
@@ -2526,8 +2559,10 @@ function handleMultiImageProcessing(inputElement, jobNum) {
                 pulseBtnSuccess(btn);
                 endBtnBusy(btn, "✔ Assigned!");
                 btn.style.background = "var(--accent-blue)";
-                // Remove from SAP14 cache immediately
-                allJobsCache = allJobsCache.filter(j => j.jobNum !== jobNum);
+                // Reflect the new owner/status in the SAP14 cache immediately
+                // (job stays visible in the "All Jobs" list, just no longer assignable).
+                jobData.status = "Ongoing";
+                jobData.tech = currentTechSessionName;
                 renderAllJobsPanel();
                 // Refresh own queue so the job appears under the logged-in tech
                 fetchTechWorkQueue();
@@ -2535,6 +2570,14 @@ function handleMultiImageProcessing(inputElement, jobNum) {
                 endBtnBusy(btn, "✅ Assign to Me");
             }
         }).catch(() => { endBtnBusy(btn, "✅ Assign to Me"); });
+    }
+
+    // Guard for jobs at SAP14 that are already ongoing with a different
+    // technician — clicking the card/button never reassigns anything, it
+    // just warns the current tech and points them at who currently owns it.
+    function warnHandoverRequest(jobNum, techName) {
+        if (event) event.stopPropagation();
+        alert(`⚠️ Job #${jobNum} is already assigned to ${techName} and in progress.\n\nrequest to handover (${techName})`);
     }
     // ────────────────────────────────────────────────────────────────────────
 </script>
