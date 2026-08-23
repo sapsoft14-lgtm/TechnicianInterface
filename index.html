@@ -194,7 +194,24 @@
         .btn-notif-bell { background: var(--bg-input); color: var(--accent-cyan); border: 1px solid var(--border-color); padding: 9px 12px; border-radius: 8px; cursor: pointer; font-weight: 700; font-size: 13px; position: relative; }
         .btn-notif-bell:hover { border-color: var(--accent-cyan); }
         .notif-badge { background: var(--accent-red); color: white; font-size: 10px; font-weight: 800; border-radius: 10px; padding: 1px 6px; position: absolute; top: -7px; right: -7px; }
-        .notif-panel { position: absolute; top: calc(100% + 8px); right: 0; width: 320px; max-width: 85vw; max-height: 420px; overflow-y: auto; background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 10px; box-shadow: 0 15px 40px rgba(0,0,0,0.45); z-index: 5000; }
+        /* Rebuilt (v2) as a centered lightbox-style modal — reuses the exact
+           same `.lightbox-modal` full-screen-overlay pattern already used
+           successfully by the Profile Settings modal and the image
+           lightbox elsewhere in this file. The previous approach anchored
+           the panel to the bell button (first with CSS `position:absolute;
+           right:0`, then with a JS-computed `position:fixed` offset) and
+           both proved unreliable in this app's actual runtime environment
+           — the panel would render detached from the button, off-screen or
+           mid-page. A centered modal has no anchor-point math at all, so
+           it can't drift: it just opens in the same place every time,
+           exactly like Profile Settings already does reliably. */
+        /* Transparent click-catcher — same full-screen fixed overlay
+           mechanics as .lightbox-modal (so outside-click-to-close still
+           works reliably) but with no dark backdrop, since this is meant
+           to read as a lightweight dropdown coming off the bell button,
+           not a blocking modal dialog. */
+        .notif-overlay { display: none; position: fixed; z-index: 10000; left: 0; top: 0; width: 100%; height: 100%; background: transparent; }
+        .notif-panel-card { background: var(--bg-card); border-radius: 16px; width: 100%; max-width: 380px; max-height: 80vh; overflow-y: auto; border: 1px solid var(--border-color); box-shadow: 0 15px 40px rgba(0,0,0,0.45); }
         .notif-panel-header { display: flex; justify-content: space-between; align-items: center; padding: 10px 12px; border-bottom: 1px solid var(--border-color); font-weight: bold; font-size: 12px; color: var(--accent-cyan); position: sticky; top: 0; background: var(--bg-card); }
         .notif-panel-header button { background: var(--accent-blue); color: white; border: none; padding: 4px 10px; border-radius: 6px; font-size: 11px; cursor: pointer; font-weight: bold; }
         #desktopNotifToggleBtn.notif-desktop-on { background: var(--accent-green); }
@@ -548,16 +565,6 @@
             <div style="display:flex; align-items:center; gap:10px;">
                 <div class="notif-bell-wrap">
                     <button type="button" class="btn-notif-bell" onclick="toggleNotifPanel()">🔔 <span class="notif-badge" id="notifBadge" style="display:none;">0</span></button>
-                    <div class="notif-panel" id="notifPanel" style="display:none;">
-                        <div class="notif-panel-header">
-                            <span>🔔 Recent Job Updates</span>
-                            <div style="display:flex; gap:6px;">
-                                <button type="button" id="desktopNotifToggleBtn" onclick="toggleDesktopNotifications()" title="Get these updates as Chrome desktop notifications">🖥️ Off</button>
-                                <button type="button" onclick="clearViewedNotifications()">Clear</button>
-                            </div>
-                        </div>
-                        <div class="notif-list" id="notifList"><div class="notif-empty">Loading...</div></div>
-                    </div>
                 </div>
                 <button type="button" class="btn-team-bell" onclick="openTeamPanel()">🏆 Team</button>
                 <button type="button" class="btn-profile-avatar" id="profileAvatarBtn" onclick="openProfileModal()" title="Profile Settings"><span class="avatar-fallback" id="profileAvatarFallback">?</span><img id="profileAvatarImg" style="display:none;"></button>
@@ -693,6 +700,25 @@
 <div id="globalLightbox" class="lightbox-modal" onclick="closeImageLightbox()">
     <span class="lightbox-close">×</span>
     <img class="lightbox-content" id="lightboxTargetImg">
+</div>
+
+<!-- ── Notifications Modal (rebuilt as a lightbox-style overlay — see the
+     CSS comment on .notif-panel-card for why). Docked to the top-right
+     corner via plain CSS flex alignment (no getBoundingClientRect/JS
+     positioning math — that's what broke in production last time) so it
+     reads as "coming from" the bell button instead of a centered dialog. -->
+<div id="notifPanel" class="notif-overlay" style="display:none; align-items:flex-start; justify-content:flex-end; padding-top:64px; padding-right:12px;" onclick="if(event.target===this) toggleNotifPanel()">
+    <div class="notif-panel-card" onclick="event.stopPropagation()">
+        <div class="notif-panel-header">
+            <span>🔔 Recent Job Updates</span>
+            <div style="display:flex; gap:6px;">
+                <button type="button" id="desktopNotifToggleBtn" onclick="toggleDesktopNotifications()" title="Get these updates as Chrome desktop notifications">🖥️ Off</button>
+                <button type="button" onclick="clearViewedNotifications()">Clear</button>
+                <span style="cursor:pointer; font-size:18px; color:var(--text-muted); padding:0 4px;" onclick="toggleNotifPanel()">×</span>
+            </div>
+        </div>
+        <div class="notif-list" id="notifList"><div class="notif-empty">Loading...</div></div>
+    </div>
 </div>
 
 <!-- ── Profile Settings Modal (NEW v11.10) ── -->
@@ -1352,10 +1378,30 @@
         // node that's already in the DOM relocates it rather than
         // duplicating it, so walking the sorted list and re-appending each
         // card puts the whole deck back in the right order.
-        filtered.forEach(job => {
-            const cardElement = document.getElementById(`card-${job.jobNum}`);
-            if (cardElement) container.appendChild(cardElement);
-        });
+        //
+        // IMPORTANT: this function also runs on every background poll
+        // (every 8s via techQueuePoller), not just on user-driven filter/
+        // sort changes. Previously it unconditionally re-appended every
+        // card on every single run, even when the order hadn't changed at
+        // all — that constant DOM churn is what made the job list feel
+        // like it was "refreshing" continuously while a technician was
+        // just reading it. Now we only touch the DOM when the order has
+        // actually changed, and preserve the scroll position as a
+        // defensive measure in case a reorder is ever triggered mid-poll
+        // while the user has scrolled down.
+        const currentOrder = Array.from(container.children).map(c => c.id);
+        const desiredOrder = filtered.map(job => `card-${job.jobNum}`);
+        const orderChanged = currentOrder.length !== desiredOrder.length
+            || currentOrder.some((id, i) => id !== desiredOrder[i]);
+
+        if (orderChanged) {
+            const preservedScrollY = window.scrollY;
+            filtered.forEach(job => {
+                const cardElement = document.getElementById(`card-${job.jobNum}`);
+                if (cardElement) container.appendChild(cardElement);
+            });
+            window.scrollTo(window.scrollX, preservedScrollY);
+        }
     }
 
     function buildPriceLinesHtml(job) {
@@ -1697,7 +1743,7 @@
     function toggleNotifPanel() {
         const panel = document.getElementById('notifPanel');
         const willOpen = panel.style.display === 'none';
-        panel.style.display = willOpen ? 'block' : 'none';
+        panel.style.display = willOpen ? 'flex' : 'none';
         if (willOpen) fetchNotifications();
     }
 
@@ -1711,11 +1757,8 @@
         renderNotifPanel();
     }
 
-    document.addEventListener('click', function (e) {
-        const wrap = document.querySelector('.notif-bell-wrap');
-        const panel = document.getElementById('notifPanel');
-        if (wrap && panel && !wrap.contains(e.target)) { panel.style.display = 'none'; }
-    });
+    // Backdrop click-to-close is handled by the onclick on the #notifPanel
+    // overlay itself (see markup) — same pattern as the Profile modal.
     // ─────────────────────────────────────────────────────────────────────────
 
     // ── Kudos popup toast notifications (NEW) ───────────────────────────────
