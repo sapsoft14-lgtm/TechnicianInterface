@@ -2559,10 +2559,30 @@ function handleMultiImageProcessing(inputElement, jobNum) {
     function closeImageLightbox() { document.getElementById('globalLightbox').style.display = "none"; }
 
     function submitJobStatusUpdateEngine(event, jobNum) {
-        event.preventDefault(); clearInterval(techQueuePoller);
-        const form = event.target; const status = form.getElementsByTagName('select')[0].value; const notes = form.getElementsByTagName('textarea')[0].value.trim(); const alertBox = document.getElementById(`msg-${jobNum}`);
+        event.preventDefault();
+        const form = event.target; const status = form.getElementsByTagName('select')[0].value; const notes = form.getElementsByTagName('textarea')[0].value.trim();
         const totalPriceInput = document.getElementById(`totalprice-${jobNum}`);
         const totalPriceVal = totalPriceInput && totalPriceInput.value.trim() !== '' ? totalPriceInput.value.trim() : '';
+
+        // NEW: marking a job Completed with zero photos attached pops a
+        // friendly animated reminder first — technicians forget to attach
+        // the diagnostic report image far more often when nothing stops
+        // to ask. "Attach Photo" routes them straight to the file picker
+        // for this job; "Skip This Time" lets the update through anyway.
+        const hasImagesAttached = (multipleFileUploadMasterMap[jobNum] || []).length > 0;
+        if (status === 'Completed' && !hasImagesAttached) {
+            showDiagnosticReportReminder(jobNum, function () {
+                proceedWithJobStatusUpdate(jobNum, form, status, notes, totalPriceVal);
+            });
+            return;
+        }
+
+        proceedWithJobStatusUpdate(jobNum, form, status, notes, totalPriceVal);
+    }
+
+    function proceedWithJobStatusUpdate(jobNum, form, status, notes, totalPriceVal) {
+        clearInterval(techQueuePoller);
+        const alertBox = document.getElementById(`msg-${jobNum}`);
         const submitBtn = form.querySelector('button[type="submit"]');
         beginBtnBusy(submitBtn, 'Posting...');
         alertBox.style.display = "block"; alertBox.style.background = "#1e293b"; alertBox.style.color = "#38bdf8"; alertBox.innerText = "Uploading data matrix...";
@@ -2988,6 +3008,143 @@ function handleMultiImageProcessing(inputElement, jobNum) {
     });
 </script>
 <!-- ══════════════════════════════ END BIRTHDAY SNIPPET ══════════════════════════════ -->
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     📋 DIAGNOSTIC REPORT REMINDER — self-contained add-on
+     Pops when a technician marks a job Completed without having attached
+     any photos to that update. Does not touch or depend on anything else
+     in the page beyond calling back into submitJobStatusUpdateEngine's flow.
+     ══════════════════════════════════════════════════════════════════════ -->
+<style>
+    #diagReminderOverlay {
+        position: fixed; inset: 0; z-index: 99997; display: none;
+        align-items: center; justify-content: center; padding: 20px;
+        background: rgba(6, 10, 24, 0.62); backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);
+        animation: diagOverlayFadeIn 0.25s ease;
+    }
+    #diagReminderOverlay.show { display: flex; }
+    @keyframes diagOverlayFadeIn { 0% { opacity: 0; } 100% { opacity: 1; } }
+
+    .diag-reminder-card {
+        position: relative; width: 380px; max-width: 100%;
+        background: linear-gradient(160deg, var(--bg-card) 0%, var(--bg-header-alt) 130%);
+        border: 1px solid var(--border-color); border-radius: 20px;
+        padding: 30px 26px 24px; text-align: center;
+        box-shadow: 0 25px 60px rgba(0,0,0,0.45);
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        animation: diagCardPopIn 0.5s cubic-bezier(.34,1.56,.64,1);
+        overflow: hidden;
+    }
+    @keyframes diagCardPopIn { 0% { transform: scale(0.75) translateY(30px); opacity: 0; } 100% { transform: scale(1) translateY(0); opacity: 1; } }
+
+    /* Soft glow sweep in the corner, purely decorative */
+    .diag-reminder-card::before {
+        content: ''; position: absolute; top: -60px; right: -60px; width: 180px; height: 180px;
+        border-radius: 50%; background: radial-gradient(circle, rgba(58,134,255,0.28), transparent 70%);
+        pointer-events: none;
+    }
+
+    /* Camera icon with a pulsing ring behind it, like a little "smile, attach a photo" cue */
+    .diag-reminder-icon-wrap { position: relative; width: 76px; height: 76px; margin: 0 auto 16px; }
+    .diag-reminder-icon-ring {
+        position: absolute; inset: 0; border-radius: 50%;
+        background: radial-gradient(circle, rgba(255,159,28,0.35), transparent 72%);
+        animation: diagRingPulse 1.8s ease-out infinite;
+    }
+    @keyframes diagRingPulse {
+        0%   { transform: scale(0.7); opacity: 0.9; }
+        70%  { transform: scale(1.35); opacity: 0; }
+        100% { transform: scale(1.35); opacity: 0; }
+    }
+    .diag-reminder-icon {
+        position: relative; z-index: 1; width: 76px; height: 76px; border-radius: 50%;
+        display: flex; align-items: center; justify-content: center; font-size: 34px;
+        background: linear-gradient(135deg, var(--accent-orange), #ff7a1c);
+        box-shadow: 0 10px 24px rgba(255,159,28,0.4);
+        animation: diagIconBounce 1.8s ease-in-out infinite;
+    }
+    @keyframes diagIconBounce { 0%, 100% { transform: translateY(0) rotate(0deg); } 50% { transform: translateY(-5px) rotate(-6deg); } }
+
+    .diag-reminder-title { position: relative; z-index: 1; font-size: 18px; font-weight: 800; color: var(--text-main); margin: 0 0 8px; }
+    .diag-reminder-msg { position: relative; z-index: 1; font-size: 13.5px; line-height: 1.55; color: var(--text-muted); margin: 0 0 22px; }
+    .diag-reminder-msg strong { color: var(--text-main); }
+
+    .diag-reminder-actions { position: relative; z-index: 1; display: flex; flex-direction: column; gap: 10px; }
+    .diag-reminder-btn-primary {
+        width: 100%; border: none; border-radius: 10px; padding: 13px; cursor: pointer;
+        font-weight: 800; font-size: 13.5px; letter-spacing: 0.2px; color: #fff;
+        background: linear-gradient(135deg, var(--accent-blue), #2f6fe0);
+        box-shadow: 0 8px 20px rgba(58,134,255,0.35); transition: transform 0.15s ease, box-shadow 0.15s ease;
+    }
+    .diag-reminder-btn-primary:hover { transform: translateY(-1px); box-shadow: 0 10px 24px rgba(58,134,255,0.45); }
+    .diag-reminder-btn-secondary {
+        width: 100%; border: 1px solid var(--border-color); border-radius: 10px; padding: 11px; cursor: pointer;
+        font-weight: 700; font-size: 12.5px; color: var(--text-muted); background: transparent;
+        transition: background 0.15s ease, color 0.15s ease;
+    }
+    .diag-reminder-btn-secondary:hover { background: rgba(148,163,184,0.12); color: var(--text-main); }
+</style>
+
+<div id="diagReminderOverlay">
+    <div class="diag-reminder-card">
+        <div class="diag-reminder-icon-wrap">
+            <div class="diag-reminder-icon-ring"></div>
+            <div class="diag-reminder-icon">📋</div>
+        </div>
+        <div class="diag-reminder-title">Don't Forget the Diagnostic Photo!</div>
+        <div class="diag-reminder-msg" id="diagReminderMsg">
+            You're about to mark <strong>this job</strong> as <strong>Completed</strong> without attaching a diagnostic report image. Adding one keeps the record complete for the customer and office.
+        </div>
+        <div class="diag-reminder-actions">
+            <button type="button" class="diag-reminder-btn-primary" onclick="diagReminderAttachPhoto()">📷 Attach Diagnostic Photo</button>
+            <button type="button" class="diag-reminder-btn-secondary" onclick="diagReminderContinueAnyway()">Skip This Time — Mark Completed</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    let pendingDiagReminderJobNum = null;
+    let pendingDiagReminderCallback = null;
+
+    // Opens the reminder for a specific job and stashes the callback that
+    // actually performs the status-update POST — nothing is submitted
+    // until the technician picks one of the two buttons.
+    function showDiagnosticReportReminder(jobNum, onContinueCallback) {
+        pendingDiagReminderJobNum = jobNum;
+        pendingDiagReminderCallback = onContinueCallback;
+        const msgEl = document.getElementById('diagReminderMsg');
+        if (msgEl) {
+            msgEl.innerHTML = `You're about to mark <strong>Job #${jobNum}</strong> as <strong>Completed</strong> without attaching a diagnostic report image. Adding one keeps the record complete for the customer and office.`;
+        }
+        document.getElementById('diagReminderOverlay').classList.add('show');
+    }
+
+    function closeDiagnosticReportReminder() {
+        document.getElementById('diagReminderOverlay').classList.remove('show');
+        pendingDiagReminderJobNum = null;
+        pendingDiagReminderCallback = null;
+    }
+
+    // "Attach Diagnostic Photo" — closes the reminder and opens the file
+    // picker for this job's own "Visual Upload Attachments" input, so the
+    // technician lands right back on the same update form to finish up.
+    function diagReminderAttachPhoto() {
+        const jobNum = pendingDiagReminderJobNum;
+        closeDiagnosticReportReminder();
+        if (jobNum === null) return;
+        const fileInput = document.getElementById(`file-${jobNum}`);
+        if (fileInput) fileInput.click();
+    }
+
+    // "Skip This Time" — closes the reminder and lets the original
+    // status-update submission through exactly as if the reminder never fired.
+    function diagReminderContinueAnyway() {
+        const callback = pendingDiagReminderCallback;
+        closeDiagnosticReportReminder();
+        if (typeof callback === 'function') callback();
+    }
+</script>
+<!-- ══════════════════════════════ END DIAGNOSTIC REPORT REMINDER ══════════════════════════════ -->
 
 </body>
 </html>
