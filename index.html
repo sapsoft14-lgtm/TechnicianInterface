@@ -215,8 +215,10 @@
         .notif-panel-header { display: flex; justify-content: space-between; align-items: center; padding: 10px 12px; border-bottom: 1px solid var(--border-color); font-weight: bold; font-size: 12px; color: var(--accent-cyan); position: sticky; top: 0; background: var(--bg-card); }
         .notif-panel-header button { background: var(--accent-blue); color: white; border: none; padding: 4px 10px; border-radius: 6px; font-size: 11px; cursor: pointer; font-weight: bold; }
         #desktopNotifToggleBtn.notif-desktop-on { background: var(--accent-green); }
-        .notif-item { padding: 10px 12px; border-bottom: 1px solid var(--border-color); font-size: 12px; color: var(--text-main); display: flex; gap: 9px; align-items: flex-start; }
+        .notif-item { padding: 10px 12px; border-bottom: 1px solid var(--border-color); font-size: 12px; color: var(--text-main); display: flex; gap: 9px; align-items: flex-start; cursor: pointer; transition: background-color .15s; }
+        .notif-item:hover { background-color: var(--bg-input); }
         .notif-item.unread { background: rgba(58,134,255,0.12); }
+        .notif-item.unread:hover { background: rgba(58,134,255,0.2); }
         /* Profile-photo avatar for whoever made the update, same lookup
            (globalProfilePicsCache) the activity feed and leaderboard use —
            falls back to initials when no photo is on file. */
@@ -226,6 +228,17 @@
         .notif-item .notif-meta { display: flex; justify-content: space-between; color: var(--text-muted); font-size: 10px; margin-bottom: 3px; }
         .notif-item .notif-note { color: var(--text-muted); margin-top: 3px; }
         .notif-empty { text-align: center; color: var(--text-muted); font-size: 12px; padding: 22px 10px; }
+        /* NEW: "View more" pagination footer for the notification panel */
+        .notif-view-more-row { padding: 10px 12px; text-align: center; }
+        .btn-notif-view-more { background: var(--bg-input); color: var(--accent-cyan); border: 1px solid var(--border-color); padding: 7px 14px; border-radius: 20px; font-size: 11px; font-weight: 700; cursor: pointer; }
+        .btn-notif-view-more:hover { border-color: var(--accent-cyan); }
+        .btn-notif-view-more:disabled { opacity: 0.6; cursor: not-allowed; }
+        /* NEW: brief highlight flash when jumping to a job from a notification */
+        @keyframes notifJumpFlash {
+            0%   { box-shadow: 0 0 0 3px var(--accent-cyan); }
+            100% { box-shadow: 0 0 0 0 transparent; }
+        }
+        .notif-jump-highlight { animation: notifJumpFlash 1.5s ease-out; }
 
         /* Theme toggle */
         .theme-toggle-wrap { position: fixed; top: 12px; right: 12px; z-index: 6000; }
@@ -1586,18 +1599,57 @@
     const NOTIF_DISMISS_KEY = 'sap_notif_last_cleared_id';
     let notifFeedCache = [];
 
+    // NEW: "View more" pagination — the panel only loads/renders a page at a
+    // time instead of dumping the whole history. NOTIF_PAGE_SIZE is how many
+    // load each time; notifHasMore tracks whether the backend likely has
+    // older rows left; notifLoadMoreInFlight guards the button from double-fires.
+    const NOTIF_PAGE_SIZE = 20;
+    let notifHasMore = false;
+    let notifLoadMoreInFlight = false;
+
     function getLastClearedNotifId() {
         return Number(localStorage.getItem(NOTIF_DISMISS_KEY)) || 0;
     }
 
+    // Initial/refresh load — always resets back to the first (most recent) page.
     function fetchNotifications() {
         if (notifFetchInFlight) return;
         if (isTechIdle() && (Date.now() - lastNotifPollTs) < 25000 * IDLE_POLL_MULTIPLIER) return;
         notifFetchInFlight = true; lastNotifPollTs = Date.now();
-        fetch(`${WEB_APP_URL}?action=getNotifications`)
+        fetch(`${WEB_APP_URL}?action=getNotifications&limit=${NOTIF_PAGE_SIZE}&offset=0`)
         .then(res => res.json())
-        .then(data => { if (data.success) { notifFeedCache = data.notifications; renderNotifPanel(); maybeFireDesktopNotifications(notifFeedCache); } })
+        .then(data => {
+            if (data.success) {
+                notifFeedCache = data.notifications;
+                // Backend may not know about paging yet — if it ignores limit/offset
+                // and just returns everything, treat that as "no more pages".
+                notifHasMore = typeof data.hasMore === 'boolean' ? data.hasMore : (data.notifications.length === NOTIF_PAGE_SIZE);
+                renderNotifPanel();
+                maybeFireDesktopNotifications(notifFeedCache);
+            }
+        })
         .catch(() => {}).finally(() => { notifFetchInFlight = false; });
+    }
+
+    // "View more" — fetches the next older page and appends it to the cache.
+    function loadMoreNotifications() {
+        if (notifLoadMoreInFlight || !notifHasMore) return;
+        notifLoadMoreInFlight = true;
+        renderNotifPanel(); // shows the button's disabled/"Loading…" state immediately
+        fetch(`${WEB_APP_URL}?action=getNotifications&limit=${NOTIF_PAGE_SIZE}&offset=${notifFeedCache.length}`)
+        .then(res => res.json())
+        .then(data => {
+            if (data.success) {
+                const existingIds = new Set(notifFeedCache.map(n => n.id));
+                const older = data.notifications.filter(n => !existingIds.has(n.id));
+                notifFeedCache = notifFeedCache.concat(older);
+                notifHasMore = typeof data.hasMore === 'boolean' ? data.hasMore : (data.notifications.length === NOTIF_PAGE_SIZE);
+            } else {
+                notifHasMore = false;
+            }
+        })
+        .catch(() => { notifHasMore = false; })
+        .finally(() => { notifLoadMoreInFlight = false; renderNotifPanel(); });
     }
 
     // ── Chrome Desktop Notifications (default ON) ───────────────────────────
@@ -1729,8 +1781,8 @@
         if (!list) return;
         if (notifFeedCache.length === 0) { list.innerHTML = '<div class="notif-empty">No recent updates.</div>'; return; }
 
-        list.innerHTML = notifFeedCache.map(n => `
-            <div class="notif-item ${n.id > lastCleared ? 'unread' : ''}">
+        const itemsHtml = notifFeedCache.map(n => `
+            <div class="notif-item ${n.id > lastCleared ? 'unread' : ''}" onclick="handleNotifItemClick(${n.jobNum})" title="Tap to jump to Job #${n.jobNum}">
                 ${getAvatarHtmlNotif(n.operator)}
                 <div class="notif-body">
                     <div class="notif-meta"><span>Job #${n.jobNum}</span><span>${escapeHtml(formatNotifTime(n.timestamp))}</span></div>
@@ -1738,6 +1790,15 @@
                     <div class="notif-note">${escapeHtml(n.note) || ''}</div>
                 </div>
             </div>`).join('');
+
+        const viewMoreHtml = notifHasMore ? `
+            <div class="notif-view-more-row">
+                <button type="button" class="btn-notif-view-more" onclick="loadMoreNotifications()" ${notifLoadMoreInFlight ? 'disabled' : ''}>
+                    ${notifLoadMoreInFlight ? 'Loading…' : 'View more'}
+                </button>
+            </div>` : '';
+
+        list.innerHTML = itemsHtml + viewMoreHtml;
     }
 
     function toggleNotifPanel() {
@@ -1745,6 +1806,44 @@
         const willOpen = panel.style.display === 'none';
         panel.style.display = willOpen ? 'flex' : 'none';
         if (willOpen) fetchNotifications();
+    }
+
+    // NEW: clicking a notification jumps straight to that job. Checks your
+    // own work queue first (opens the card if it's collapsed), then falls
+    // back to the "All Jobs @ SAP14" panel if it's visible there instead,
+    // and flashes whichever one it finds so it's obvious what just happened.
+    function handleNotifItemClick(jobNum) {
+        document.getElementById('notifPanel').style.display = 'none';
+
+        const flash = (el) => {
+            el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            el.classList.remove('notif-jump-highlight');
+            void el.offsetWidth; // restart the animation if it was just played
+            el.classList.add('notif-jump-highlight');
+        };
+
+        const card = document.getElementById(`card-${jobNum}`);
+        if (card) {
+            const body = document.getElementById(`body-${jobNum}`);
+            if (body && body.style.display !== 'block') toggleCardCollapse(jobNum);
+            flash(card);
+            return;
+        }
+
+        const aj = allJobsCache.find(j => j.jobNum == jobNum);
+        if (aj) {
+            const ajBody = document.getElementById('ajBody');
+            if (ajBody && !ajBody.classList.contains('open')) toggleAllJobsPanel();
+            document.getElementById('ajSearchInput').value = jobNum;
+            renderAllJobsPanel();
+            setTimeout(() => {
+                const ajItem = document.getElementById(`aj-item-${jobNum}`);
+                if (ajItem) flash(ajItem);
+            }, 50);
+            return;
+        }
+
+        alert(`Job #${jobNum} isn't currently visible in your queue or the All Jobs list.`);
     }
 
     // "View it, then clear it" — clearing just moves the local watermark up
@@ -2759,7 +2858,7 @@ function handleMultiImageProcessing(inputElement, jobNum) {
             }
 
             return `
-            <div class="aj-item" ${assignedToOther ? `onclick="warnHandoverRequest(${job.jobNum}, '${escapeHtml(job.tech).replace(/'/g, "\\'")}')" style="cursor:pointer;"` : ''}>
+            <div class="aj-item" id="aj-item-${job.jobNum}" ${assignedToOther ? `onclick="warnHandoverRequest(${job.jobNum}, '${escapeHtml(job.tech).replace(/'/g, "\\'")}')" style="cursor:pointer;"` : ''}>
                 <div style="display:flex; justify-content:space-between; align-items:center;">
                     <span class="aj-num">#${job.jobNum}</span>
                     <span class="status-badge b-${(job.status||'').replace(/\s+/g, '')}" style="font-size:9.5px; padding:2px 8px;">${escapeHtml(job.status)}</span>
