@@ -551,6 +551,79 @@
             .filter-pill:active { transform: scale(0.94); }
         }
     </style>
+    <style id="imgEditorStyles">
+        /* ═══ PHOTO EDITOR (WhatsApp-style) — always dark, independent of portal theme ═══ */
+        .edit-thumb-badge { position: absolute; left: 2px; bottom: 2px; width: 18px; height: 18px; border-radius: 50%; background: rgba(0,0,0,0.65); color: #fff; font-size: 10px; line-height: 18px; text-align: center; pointer-events: none; }
+        .preview-thumb-container { cursor: pointer; }
+
+        .ied-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; height: 100dvh; z-index: 20000; background: #05070d; color: #fff; flex-direction: column; font-family: 'Segoe UI', system-ui, sans-serif; user-select: none; -webkit-user-select: none; overscroll-behavior: contain; }
+        .ied-overlay.show { display: flex; }
+        .ied-overlay button { font-family: inherit; }
+
+        .ied-top { flex: none; display: flex; align-items: center; gap: 8px; padding: 8px 10px; background: #0b1329; border-bottom: 1px solid #1e293b; }
+        .ied-title { flex: 1; text-align: center; font-weight: 700; font-size: 14px; }
+        .ied-icon-btn { flex: none; width: 40px; height: 40px; border-radius: 50%; border: none; background: rgba(255,255,255,0.1); color: #fff; font-size: 18px; cursor: pointer; padding: 0; display: flex; align-items: center; justify-content: center; }
+        .ied-icon-btn:disabled { opacity: 0.3; cursor: default; }
+
+        .ied-stage { flex: 1; min-height: 0; position: relative; display: flex; align-items: center; justify-content: center; overflow: hidden; touch-action: none; background: #05070d; }
+        .ied-loading { display: none; position: absolute; color: #94a3b8; font-size: 13px; }
+        .ied-wrap { position: relative; flex: none; line-height: 0; }
+        .ied-wrap.m-draw { cursor: crosshair; }
+        .ied-canvas { display: block; box-shadow: 0 0 0 1px rgba(255,255,255,0.08); }
+
+        /* Crop box */
+        .ied-crop { display: none; position: absolute; left: 0; top: 0; right: 0; bottom: 0; overflow: hidden; }
+        .ied-crop-box { position: absolute; border: 2px solid #fff; box-shadow: 0 0 0 9999px rgba(0,0,0,0.6); cursor: move; touch-action: none; }
+        .ied-crop-box::before { content: ''; position: absolute; left: 33.333%; top: 0; width: 33.333%; height: 100%; border-left: 1px solid rgba(255,255,255,0.4); border-right: 1px solid rgba(255,255,255,0.4); pointer-events: none; }
+        .ied-crop-box::after { content: ''; position: absolute; top: 33.333%; left: 0; height: 33.333%; width: 100%; border-top: 1px solid rgba(255,255,255,0.4); border-bottom: 1px solid rgba(255,255,255,0.4); pointer-events: none; }
+        .ied-h { position: absolute; width: 36px; height: 36px; display: block; touch-action: none; z-index: 2; }
+        .ied-h::after { content: ''; position: absolute; width: 20px; height: 20px; border: 0 solid #fff; }
+        .ied-h[data-h="tl"] { left: -2px; top: -2px; cursor: nwse-resize; }
+        .ied-h[data-h="tl"]::after { left: 0; top: 0; border-width: 4px 0 0 4px; }
+        .ied-h[data-h="tr"] { right: -2px; top: -2px; cursor: nesw-resize; }
+        .ied-h[data-h="tr"]::after { right: 0; top: 0; border-width: 4px 4px 0 0; }
+        .ied-h[data-h="bl"] { left: -2px; bottom: -2px; cursor: nesw-resize; }
+        .ied-h[data-h="bl"]::after { left: 0; bottom: 0; border-width: 0 0 4px 4px; }
+        .ied-h[data-h="br"] { right: -2px; bottom: -2px; cursor: nwse-resize; }
+        .ied-h[data-h="br"]::after { right: 0; bottom: 0; border-width: 0 4px 4px 0; }
+
+        /* Live text preview */
+        .ied-text-preview { display: none; position: absolute; transform: translate(-50%, -50%); white-space: nowrap; font-weight: 700; line-height: 1; pointer-events: none; font-family: "Segoe UI", system-ui, sans-serif; }
+
+        /* Tool panels */
+        .ied-sub { flex: none; background: #0b1329; }
+        .ied-panel { display: none; flex-direction: column; gap: 10px; padding: 10px 12px; border-top: 1px solid #1e293b; }
+        .ied-row { display: flex; align-items: center; gap: 8px; }
+        .ied-row.wrap { flex-wrap: wrap; }
+        .ied-lbl { flex: none; width: 76px; font-size: 12px; font-weight: 700; color: #94a3b8; }
+        .ied-hint { font-size: 11px; color: #94a3b8; }
+        .ied-chip { background: #1c2541; color: #cbd5e1; border: 1px solid #334155; border-radius: 16px; padding: 6px 12px; font-size: 12px; font-weight: 700; cursor: pointer; }
+        .ied-chip.active { background: #3a86ff; border-color: #3a86ff; color: #fff; }
+        .ied-btn { flex: 1; border: none; border-radius: 10px; padding: 11px 12px; font-size: 13px; font-weight: 800; cursor: pointer; }
+        .ied-btn.primary { background: #3a86ff; color: #fff; }
+        .ied-btn.ghost { background: #1c2541; color: #cbd5e1; border: 1px solid #334155; }
+        .ied-btn.narrow { flex: none; }
+        .ied-swatches { flex-wrap: wrap; }
+        .ied-swatch { flex: none; width: 26px; height: 26px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.35); cursor: pointer; padding: 0; }
+        .ied-swatch.active { border-color: #fff; transform: scale(1.18); box-shadow: 0 0 0 2px #3a86ff; }
+        /* The portal has global input{width:100%;padding;border;appearance:none} rules — reset them inside the editor */
+        #imgEditorOverlay input[type=text] { flex: 1 1 0; min-width: 0; background: #1c2541; color: #fff; border: 1px solid #334155; border-radius: 20px; padding: 10px 14px; font-size: 16px; }
+        #imgEditorOverlay input[type=range] { -webkit-appearance: auto; appearance: auto; flex: 1 1 0; min-width: 0; padding: 0; border: none; background: transparent; accent-color: #3a86ff; height: 28px; margin: 0; }
+
+        /* Bottom: tools + photo strip + Add */
+        .ied-tools { flex: none; display: flex; background: #0b1329; border-top: 1px solid #1e293b; }
+        .ied-tool { flex: 1; min-width: 0; background: none; border: none; color: #cbd5e1; padding: 8px 2px 6px; display: flex; flex-direction: column; align-items: center; gap: 2px; font-size: 10px; font-weight: 700; cursor: pointer; }
+        .ied-tool .ic { font-size: 20px; line-height: 1.15; }
+        .ied-tool.active { color: #3a86ff; }
+        .ied-bottom { flex: none; display: flex; align-items: center; gap: 10px; padding: 8px 10px; background: #05070d; border-top: 1px solid #1e293b; }
+        .ied-strip { flex: 1; min-width: 0; display: flex; gap: 8px; overflow-x: auto; touch-action: pan-x; padding: 2px; }
+        .ied-tile { flex: none; width: 52px; height: 52px; border-radius: 8px; overflow: hidden; border: 2px solid transparent; padding: 0; background: #1c2541; cursor: pointer; opacity: 0.7; }
+        .ied-tile.active { border-color: #3a86ff; opacity: 1; }
+        .ied-tile canvas { width: 100%; height: 100%; display: block; }
+        .ied-tile.add { border: 2px dashed #475569; color: #94a3b8; font-size: 24px; opacity: 1; display: flex; align-items: center; justify-content: center; }
+        .ied-done { flex: none; background: #06d6a0; color: #04231a; border: none; border-radius: 24px; height: 46px; padding: 0 20px; font-weight: 800; font-size: 14px; cursor: pointer; }
+        .ied-done:disabled { opacity: 0.6; cursor: default; }
+    </style>
 </head>
 <body>
 
@@ -2453,66 +2526,34 @@
     }
     // ─────────────────────────────────────────────────────────────────────────
 
-    /**
- * IMAGE COMPRESSION PATCH — technician-terminal.html
+    /* ══════════════════════════════════════════════════════════════════════
+ * PHOTO EDITOR (WhatsApp-style) — rotate, crop, draw, text, light
  *
- * Replaces the existing handleMultiImageProcessing() function with a
- * version that resizes/re-compresses photos in the browser BEFORE they're
- * turned into base64 and queued for upload.
+ * Flow: tech taps "Attach Photos" → picks images → this full-screen editor
+ * opens with every picked photo in a strip at the bottom. Edit any of them,
+ * tap "Add ✓", and the finished JPEGs go into multipleFileUploadMasterMap
+ * exactly like before ({ base64, name }), so the upload code is unchanged.
+ * Tapping a thumbnail that's already attached re-opens the editor for it.
  *
- * WHY THIS MATTERS ON A SHARED / LIMITED-BANDWIDTH CONNECTION:
- * A raw phone photo is typically 3-8 MB (often 3000x4000px+). Sending
- * that as base64 adds ~33% on top. A single job update with 3-4 photos
- * can mean 15-30+ MB going up a connection that may only have 1-2 Mbps
- * of upload — that alone can take a minute or more, and while it's
- * happening it starves every other request sharing that same router
- * (including someone else's login, which is why it can look like a
- * random "network error" for other users at the same moment).
- *
- * This resizes photos down to a max of 1280px on the longest side and
- * re-encodes as JPEG at 65% quality — typically shrinking a 5MB photo
- * down to roughly 100-300KB. That's a 15-30x reduction with no visible
- * quality loss for the purpose of a repair-record photo.
- *
- * HOW TO APPLY:
- * In technician-terminal.html, find the existing handleMultiImageProcessing
- * function (inside the <script> tag) and REPLACE it (and only it) with
- * everything below.
- */
+ * Output is still resized to MAX_IMAGE_DIMENSION and re-encoded as JPEG at
+ * IMAGE_JPEG_QUALITY, so uploads stay small on a slow connection.
+ * ══════════════════════════════════════════════════════════════════════ */
 
 // Tune these if you want smaller/larger uploads.
 const MAX_IMAGE_DIMENSION = 1280; // longest side, in pixels
 const IMAGE_JPEG_QUALITY = 0.65;  // 0–1, lower = smaller file, more compression artifacts
 const MAX_PHOTOS_PER_UPDATE = 5;  // simple safety cap so one update can't queue 20 photos
 
-function compressImageFile_(file) {
-    return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = (e) => {
-            const img = new Image();
-            img.onload = () => {
-                let width = img.width;
-                let height = img.height;
-                if (width > height && width > MAX_IMAGE_DIMENSION) {
-                    height = Math.round(height * (MAX_IMAGE_DIMENSION / width));
-                    width = MAX_IMAGE_DIMENSION;
-                } else if (height > MAX_IMAGE_DIMENSION) {
-                    width = Math.round(width * (MAX_IMAGE_DIMENSION / height));
-                    height = MAX_IMAGE_DIMENSION;
-                }
-                const canvas = document.createElement('canvas');
-                canvas.width = width;
-                canvas.height = height;
-                canvas.getContext('2d').drawImage(img, 0, 0, width, height);
-                resolve(canvas.toDataURL('image/jpeg', IMAGE_JPEG_QUALITY));
-            };
-            img.onerror = () => reject(new Error('Could not read image: ' + file.name));
-            img.src = e.target.result;
-        };
-        reader.onerror = () => reject(new Error('Could not read file: ' + file.name));
-        reader.readAsDataURL(file);
-    });
-}
+const IED_COLORS = ['#ffffff', '#000000', '#ef476f', '#ff9f1c', '#ffd60a', '#06d6a0', '#3a86ff', '#8338ec'];
+const IED_MAX_UNDO = 15;
+let ied = null;          // editor state while open, null when closed
+let iedInitDone = false; // one-time DOM listener setup
+let iedMeasureCtx = null;
+
+function iedEl(id) { return document.getElementById(id); }
+function iedCur() { return ied && ied.cur >= 0 ? ied.items[ied.cur] : null; }
+
+/* ── Entry points ─────────────────────────────────────────────────────── */
 
 function handleMultiImageProcessing(inputElement, jobNum) {
     if (!multipleFileUploadMasterMap[jobNum]) multipleFileUploadMasterMap[jobNum] = [];
@@ -2525,42 +2566,677 @@ function handleMultiImageProcessing(inputElement, jobNum) {
         alert(`You can attach up to ${MAX_PHOTOS_PER_UPDATE} photos per update. Only the first ${allowed} of your new selection will be added.`);
         files = files.slice(0, allowed);
     }
-    if (files.length === 0) { inputElement.value = ""; return; }
+    inputElement.value = "";
+    if (files.length === 0) return;
 
-    const deck = document.getElementById(`preview-deck-${jobNum}`);
-    let progressNote = null;
-    if (deck) {
-        progressNote = document.createElement('div');
-        progressNote.style.cssText = 'font-size:11px;color:var(--text-muted);width:100%;padding:4px 0;';
-        progressNote.innerText = `Compressing ${files.length} photo(s)...`;
-        deck.appendChild(progressNote);
-    }
-
-    Promise.all(files.map(f => compressImageFile_(f)))
-        .then(results => {
-            results.forEach(base64 => {
-                multipleFileUploadMasterMap[jobNum].push({ base64: base64, name: `Job_${jobNum}.jpg` });
+    openImageEditor({
+        sources: files,
+        capacity: MAX_PHOTOS_PER_UPDATE - existingCount,
+        replace: false,
+        onDone: function (results) {
+            if (!multipleFileUploadMasterMap[jobNum]) multipleFileUploadMasterMap[jobNum] = [];
+            results.forEach(function (b64) {
+                multipleFileUploadMasterMap[jobNum].push({ base64: b64, name: `Job_${jobNum}.jpg` });
             });
             renderImageThumbnailsDeck(jobNum);
-        })
-        .catch(err => {
-            if (progressNote) progressNote.remove();
-            alert('Could not process one of the selected photos. Please try again with a different image.\n' + err.message);
-        });
-
-    inputElement.value = "";
+        }
+    });
 }
+
+// Tap an already-attached thumbnail → edit it again (replaces that photo).
+function editExistingImage(jobNum, idx) {
+    const list = multipleFileUploadMasterMap[jobNum] || [];
+    if (!list[idx]) return;
+    openImageEditor({
+        sources: [list[idx].base64],
+        capacity: 1,
+        replace: true,
+        onDone: function (results) {
+            const cur = multipleFileUploadMasterMap[jobNum];
+            if (cur && cur[idx]) { cur[idx].base64 = results[0]; renderImageThumbnailsDeck(jobNum); }
+        }
+    });
+}
+
+/* ── Loading images into working canvases ─────────────────────────────── */
+
+function iedLoadToCanvas(src) { // src: File or data-URL string
+    return new Promise(function (resolve, reject) {
+        const isFile = typeof src !== 'string';
+        const url = isFile ? URL.createObjectURL(src) : src;
+        const img = new Image();
+        img.onload = function () {
+            let w = img.naturalWidth || img.width, h = img.naturalHeight || img.height;
+            const longest = Math.max(w, h);
+            if (longest > MAX_IMAGE_DIMENSION) {
+                const s = MAX_IMAGE_DIMENSION / longest;
+                w = Math.round(w * s); h = Math.round(h * s);
+            }
+            const c = document.createElement('canvas');
+            c.width = w; c.height = h;
+            const ctx = c.getContext('2d');
+            ctx.fillStyle = '#ffffff';            // PNGs with transparency → white, not black
+            ctx.fillRect(0, 0, w, h);
+            ctx.drawImage(img, 0, 0, w, h);
+            if (isFile) URL.revokeObjectURL(url);
+            resolve(c);
+        };
+        img.onerror = function () {
+            if (isFile) URL.revokeObjectURL(url);
+            reject(new Error('Could not read image: ' + ((src && src.name) || 'photo')));
+        };
+        img.src = url;
+    });
+}
+
+function iedMakeItem(canvas, orig) {
+    const tile = document.createElement('canvas');
+    tile.width = 96; tile.height = 96;
+    return { canvas: canvas, undo: [], adj: { b: 100, c: 100 }, dirty: false, orig: orig || null, tile: tile };
+}
+
+/* ── Open / close ─────────────────────────────────────────────────────── */
+
+function openImageEditor(opts) {
+    if (ied) return;
+    iedInit();
+    ied = {
+        items: [], cur: -1, mode: 'none', color: IED_COLORS[2], ratio: null,
+        crop: { x: 0, y: 0, w: 1, h: 1 }, drag: null, stroke: null, textPos: { x: 0.5, y: 0.5 }, textDrag: false,
+        capacity: opts.capacity || MAX_PHOTOS_PER_UPDATE, replace: !!opts.replace, onDone: opts.onDone,
+        busy: false, observer: null
+    };
+    const overlay = iedEl('imgEditorOverlay');
+    overlay.classList.add('show');
+    document.body.style.overflow = 'hidden';
+    iedEl('iedLoading').style.display = 'block';
+    iedEl('iedStrip').innerHTML = '';
+    iedSetPanels('none');
+    iedUpdateUI();
+
+    if (typeof ResizeObserver !== 'undefined') {
+        ied.observer = new ResizeObserver(function () { iedFit(); });
+        ied.observer.observe(iedEl('iedStage'));
+    }
+
+    const state = ied;
+    Promise.all(opts.sources.map(iedLoadToCanvas)).then(function (canvases) {
+        if (ied !== state) return; // closed while loading
+        canvases.forEach(function (c, i) {
+            const src = opts.sources[i];
+            state.items.push(iedMakeItem(c, typeof src === 'string' ? src : null));
+        });
+        iedEl('iedLoading').style.display = 'none';
+        iedShowItem(0);
+    }).catch(function (err) {
+        if (ied === state) iedClose();
+        alert('Could not open the photo(s). Please try a different image.\n' + err.message);
+    });
+}
+
+function iedClose() {
+    if (!ied) return;
+    if (ied.observer) ied.observer.disconnect();
+    const wrap = iedEl('iedWrap');
+    const old = wrap.querySelector('canvas');
+    if (old) wrap.removeChild(old);
+    iedEl('imgEditorOverlay').classList.remove('show');
+    iedEl('iedTextInput').value = '';
+    iedEl('iedTextPreview').style.display = 'none';
+    document.body.style.overflow = '';
+    ied = null;
+}
+
+function iedCancel() {
+    if (!ied) return;
+    const changed = ied.items.some(function (it) { return it.dirty || it.adj.b !== 100 || it.adj.c !== 100; });
+    if (changed && !confirm('Discard your edits?')) return;
+    iedClose();
+}
+
+function iedDone() {
+    if (!ied || ied.busy || ied.items.length === 0) return;
+    ied.busy = true;
+    const btn = iedEl('iedDoneBtn');
+    btn.disabled = true; btn.textContent = 'Saving…';
+    const state = ied;
+    setTimeout(function () {
+        let results;
+        try {
+            results = state.items.map(iedExport);
+        } catch (err) {
+            state.busy = false; btn.disabled = false; iedUpdateUI();
+            alert('Could not save the photo(s): ' + err.message);
+            return;
+        }
+        const cb = state.onDone;
+        iedClose();
+        if (typeof cb === 'function') cb(results);
+    }, 30);
+}
+
+// Final render of one photo → JPEG data URL (applies brightness/contrast).
+function iedExport(it) {
+    const c = it.canvas;
+    const b = it.adj.b / 100, k = it.adj.c / 100;
+    if (!it.dirty && it.orig && b === 1 && k === 1) return it.orig; // re-opened, untouched → keep as-is
+    const out = document.createElement('canvas');
+    out.width = c.width; out.height = c.height;
+    const ctx = out.getContext('2d');
+    ctx.drawImage(c, 0, 0);
+    if (b !== 1 || k !== 1) {
+        const id = ctx.getImageData(0, 0, out.width, out.height), d = id.data;
+        for (let i = 0; i < d.length; i += 4) {
+            for (let j = 0; j < 3; j++) {
+                let v = d[i + j] * b;
+                v = (v - 127.5) * k + 127.5;
+                d[i + j] = v < 0 ? 0 : (v > 255 ? 255 : v);
+            }
+        }
+        ctx.putImageData(id, 0, 0);
+    }
+    return out.toDataURL('image/jpeg', IMAGE_JPEG_QUALITY);
+}
+
+/* ── Showing an item, layout, strip ───────────────────────────────────── */
+
+function iedShowItem(i) {
+    if (!ied || !ied.items[i]) return;
+    const wrap = iedEl('iedWrap');
+    const old = wrap.querySelector('canvas');
+    if (old) wrap.removeChild(old);
+    if (ied.mode === 'crop') iedSetMode('none');
+    ied.cur = i;
+    const it = ied.items[i];
+    it.canvas.className = 'ied-canvas';
+    wrap.insertBefore(it.canvas, wrap.firstChild);
+    iedApplyFilterPreview(it);
+    iedFit();
+    iedRenderStrip();
+    iedUpdateUI();
+    if (ied.mode === 'light') iedSyncLightSliders();
+}
+
+function iedSelect(i) { if (ied && i !== ied.cur) iedShowItem(i); }
+
+function iedFit() {
+    const it = iedCur();
+    if (!ied || !it) return;
+    const stage = iedEl('iedStage'), wrap = iedEl('iedWrap'), c = it.canvas;
+    const pad = 12;
+    const sw = stage.clientWidth - pad * 2, sh = stage.clientHeight - pad * 2;
+    if (sw <= 0 || sh <= 0) return;
+    const s = Math.min(sw / c.width, sh / c.height);
+    const dw = Math.max(1, Math.round(c.width * s)), dh = Math.max(1, Math.round(c.height * s));
+    c.style.width = dw + 'px'; c.style.height = dh + 'px';
+    wrap.style.width = dw + 'px'; wrap.style.height = dh + 'px';
+    if (ied.mode === 'crop') iedRenderCrop();
+    iedRenderTextPreview();
+}
+
+function iedDrawTile(it) {
+    const t = it.tile, x = t.getContext('2d'), c = it.canvas;
+    const s = Math.max(96 / c.width, 96 / c.height), w = c.width * s, h = c.height * s;
+    x.clearRect(0, 0, 96, 96);
+    x.drawImage(c, (96 - w) / 2, (96 - h) / 2, w, h);
+}
+
+function iedRenderStrip() {
+    if (!ied) return;
+    const strip = iedEl('iedStrip');
+    strip.innerHTML = '';
+    ied.items.forEach(function (it, i) {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'ied-tile' + (i === ied.cur ? ' active' : '');
+        b.setAttribute('aria-label', 'Photo ' + (i + 1));
+        iedDrawTile(it);
+        it.tile.style.filter = it.canvas.style.filter || '';
+        b.appendChild(it.tile);
+        b.onclick = function () { iedSelect(i); };
+        strip.appendChild(b);
+    });
+    if (!ied.replace && ied.items.length < ied.capacity) {
+        const add = document.createElement('button');
+        add.type = 'button';
+        add.className = 'ied-tile add';
+        add.setAttribute('aria-label', 'Add more photos');
+        add.textContent = '+';
+        add.onclick = function () { iedEl('iedAddInput').click(); };
+        strip.appendChild(add);
+    }
+}
+
+function iedAddFiles(input) {
+    if (!ied) return;
+    let files = Array.from(input.files);
+    input.value = '';
+    const room = ied.capacity - ied.items.length;
+    if (files.length > room) {
+        alert(`You can attach up to ${MAX_PHOTOS_PER_UPDATE} photos per update. Only the first ${Math.max(0, room)} of your new selection will be added.`);
+        files = files.slice(0, Math.max(0, room));
+    }
+    if (!files.length) return;
+    const state = ied;
+    Promise.all(files.map(iedLoadToCanvas)).then(function (canvases) {
+        if (ied !== state) return;
+        canvases.forEach(function (c) { state.items.push(iedMakeItem(c, null)); });
+        iedShowItem(state.items.length - canvases.length);
+    }).catch(function (err) {
+        alert('Could not process one of the selected photos.\n' + err.message);
+    });
+}
+
+function iedRemoveCurrent() {
+    if (!ied || ied.replace || ied.cur < 0) return;
+    const removedAt = ied.cur;
+    ied.items.splice(removedAt, 1);
+    if (ied.items.length === 0) { iedClose(); return; }
+    iedShowItem(Math.min(removedAt, ied.items.length - 1));
+}
+
+function iedUpdateUI() {
+    if (!ied) return;
+    const it = iedCur();
+    iedEl('iedUndoBtn').disabled = !(it && it.undo.length);
+    iedEl('iedTitle').textContent = ied.items.length > 1 ? `Edit photo ${ied.cur + 1} of ${ied.items.length}` : 'Edit photo';
+    iedEl('iedDeleteBtn').style.display = ied.replace ? 'none' : '';
+    const btn = iedEl('iedDoneBtn');
+    if (!ied.busy) {
+        btn.disabled = ied.items.length === 0;
+        btn.textContent = (ied.replace ? 'Save' : (ied.items.length > 1 ? 'Add ' + ied.items.length : 'Add')) + ' ✓';
+    }
+}
+
+/* ── Undo ─────────────────────────────────────────────────────────────── */
+
+function iedPushUndo(it) {
+    const s = document.createElement('canvas');
+    s.width = it.canvas.width; s.height = it.canvas.height;
+    s.getContext('2d').drawImage(it.canvas, 0, 0);
+    it.undo.push(s);
+    if (it.undo.length > IED_MAX_UNDO) it.undo.shift();
+    it.dirty = true;
+    iedUpdateUI();
+}
+
+function iedUndo() {
+    const it = iedCur();
+    if (!ied || !it) return;
+    const s = it.undo.pop();
+    if (!s) return;
+    it.canvas.width = s.width; it.canvas.height = s.height;
+    it.canvas.getContext('2d').drawImage(s, 0, 0);
+    iedFit();
+    if (ied.mode === 'crop') iedResetCrop();
+    iedDrawTile(it); iedRenderStrip(); iedUpdateUI();
+}
+
+/* ── Rotate ───────────────────────────────────────────────────────────── */
+
+function iedRotate(dir) { // 1 = clockwise, -1 = counter-clockwise
+    const it = iedCur();
+    if (!ied || !it) return;
+    iedPushUndo(it);
+    const c = it.canvas, w = c.width, h = c.height;
+    const tmp = document.createElement('canvas');
+    tmp.width = w; tmp.height = h;
+    tmp.getContext('2d').drawImage(c, 0, 0);
+    c.width = h; c.height = w;
+    const ctx = c.getContext('2d');
+    ctx.translate(h / 2, w / 2);
+    ctx.rotate(dir * Math.PI / 2);
+    ctx.drawImage(tmp, -w / 2, -h / 2);
+    iedFit();
+    if (ied.mode === 'crop') iedResetCrop();
+    iedDrawTile(it); iedRenderStrip();
+}
+
+/* ── Tool modes / panels ──────────────────────────────────────────────── */
+
+function iedSetPanels(mode) {
+    ['crop', 'draw', 'text', 'light'].forEach(function (m) {
+        iedEl('iedPanel_' + m).style.display = (m === mode) ? 'flex' : 'none';
+        iedEl('iedTool_' + m).classList.toggle('active', m === mode);
+    });
+    iedEl('iedCrop').style.display = mode === 'crop' ? 'block' : 'none';
+    iedEl('iedWrap').classList.toggle('m-draw', mode === 'draw' || mode === 'text');
+}
+
+function iedToggleTool(mode) { iedSetMode(ied && ied.mode === mode ? 'none' : mode); }
+
+function iedSetMode(mode) {
+    if (!ied) return;
+    ied.mode = mode;
+    iedSetPanels(mode);
+    iedFit(); // panel height changed the stage size
+    if (mode === 'crop') {
+        ied.ratio = null;
+        iedMarkRatioChip(0);
+        iedResetCrop();
+    }
+    if (mode === 'light') iedSyncLightSliders();
+    iedRenderTextPreview();
+}
+
+/* ── Crop ─────────────────────────────────────────────────────────────── */
+
+function iedCropPx() {
+    const c = iedCur().canvas, W = c.clientWidth, H = c.clientHeight, r = ied.crop;
+    return { x: r.x * W, y: r.y * H, w: r.w * W, h: r.h * H, W: W, H: H };
+}
+
+function iedSetCropPx(r) {
+    const c = iedCur().canvas, W = c.clientWidth || 1, H = c.clientHeight || 1;
+    ied.crop = { x: r.x / W, y: r.y / H, w: r.w / W, h: r.h / H };
+    iedRenderCrop();
+}
+
+function iedRenderCrop() {
+    if (!iedCur()) return;
+    const b = iedEl('iedCropBox'), r = iedCropPx();
+    b.style.left = r.x + 'px'; b.style.top = r.y + 'px';
+    b.style.width = r.w + 'px'; b.style.height = r.h + 'px';
+}
+
+function iedResetCrop() {
+    if (!iedCur()) return;
+    const c = iedCur().canvas, W = c.clientWidth, H = c.clientHeight;
+    let w = W, h = H;
+    if (ied.ratio) {
+        if (W / H > ied.ratio) { h = H; w = H * ied.ratio; } else { w = W; h = W / ied.ratio; }
+    }
+    iedSetCropPx({ x: (W - w) / 2, y: (H - h) / 2, w: w, h: h });
+}
+
+function iedMarkRatioChip(r) {
+    Array.prototype.forEach.call(document.querySelectorAll('#iedRatios .ied-chip'), function (el) {
+        el.classList.toggle('active', parseFloat(el.getAttribute('data-r')) === r);
+    });
+}
+
+function iedSetRatio(r) {
+    if (!ied) return;
+    ied.ratio = r > 0 ? r : null;
+    iedMarkRatioChip(r);
+    iedResetCrop();
+}
+
+function iedCropDrag(dx, dy) {
+    const d = ied.drag, r = d.r, W = r.W, H = r.H, MIN = 48;
+    if (d.type === 'move') {
+        iedSetCropPx({
+            x: Math.min(Math.max(0, r.x + dx), W - r.w),
+            y: Math.min(Math.max(0, r.y + dy), H - r.h),
+            w: r.w, h: r.h
+        });
+        return;
+    }
+    const left = d.type.indexOf('l') >= 0, top = d.type.indexOf('t') >= 0;
+    const dirX = left ? -1 : 1, dirY = top ? -1 : 1;
+    const ax = left ? r.x + r.w : r.x, ay = top ? r.y + r.h : r.y;   // anchor = the opposite corner
+    const maxW = left ? ax : W - ax, maxH = top ? ay : H - ay;
+    let w = r.w + dirX * dx, h = r.h + dirY * dy;
+    if (ied.ratio) {
+        const k = ied.ratio;
+        w = Math.max(w, h * k);
+        w = Math.min(w, maxW, maxH * k);
+        w = Math.max(w, MIN);
+        h = w / k;
+        if (h > maxH) { h = maxH; w = h * k; }
+    } else {
+        w = Math.min(Math.max(w, MIN), maxW);
+        h = Math.min(Math.max(h, MIN), maxH);
+    }
+    iedSetCropPx({ x: left ? ax - w : ax, y: top ? ay - h : ay, w: w, h: h });
+}
+
+function iedCropApply() {
+    const it = iedCur();
+    if (!ied || !it) return;
+    const c = it.canvas, r = iedCropPx();
+    const kx = c.width / r.W, ky = c.height / r.H;
+    let sx = Math.max(0, Math.round(r.x * kx)), sy = Math.max(0, Math.round(r.y * ky));
+    let sw = Math.round(r.w * kx), sh = Math.round(r.h * ky);
+    sw = Math.max(1, Math.min(sw, c.width - sx)); sh = Math.max(1, Math.min(sh, c.height - sy));
+    if (sw >= c.width - 1 && sh >= c.height - 1) { iedSetMode('none'); return; } // nothing to crop
+    iedPushUndo(it);
+    const tmp = document.createElement('canvas');
+    tmp.width = sw; tmp.height = sh;
+    tmp.getContext('2d').drawImage(c, sx, sy, sw, sh, 0, 0, sw, sh);
+    c.width = sw; c.height = sh;
+    c.getContext('2d').drawImage(tmp, 0, 0);
+    iedSetMode('none');
+    iedDrawTile(it); iedRenderStrip();
+}
+
+/* ── Draw ─────────────────────────────────────────────────────────────── */
+
+function iedPt(e) {
+    const c = iedCur().canvas, r = c.getBoundingClientRect();
+    return {
+        x: (e.clientX - r.left) * c.width / r.width,
+        y: (e.clientY - r.top) * c.height / r.height,
+        nx: (e.clientX - r.left) / r.width,
+        ny: (e.clientY - r.top) / r.height
+    };
+}
+
+function iedDrawStart(e) {
+    const it = iedCur();
+    iedPushUndo(it);
+    const ctx = it.canvas.getContext('2d'), p = iedPt(e);
+    ctx.strokeStyle = ied.color;
+    ctx.lineWidth = Math.max(5, it.canvas.width * 0.012);
+    ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(p.x + 0.01, p.y); ctx.stroke();
+    ied.stroke = { last: p };
+    try { iedEl('iedWrap').setPointerCapture(e.pointerId); } catch (_) { }
+    e.preventDefault();
+}
+
+function iedDrawMove(e) {
+    const it = iedCur();
+    if (!it || !ied.stroke) return;
+    const ctx = it.canvas.getContext('2d'), p = iedPt(e), l = ied.stroke.last;
+    ctx.beginPath(); ctx.moveTo(l.x, l.y); ctx.lineTo(p.x, p.y); ctx.stroke();
+    ied.stroke.last = p;
+    e.preventDefault();
+}
+
+/* ── Text ─────────────────────────────────────────────────────────────── */
+
+function iedOutline(color) { return color === '#000000' ? '#ffffff' : '#000000'; }
+
+function iedTextFontSize(text, c) {
+    const pct = parseInt(iedEl('iedTextSize').value, 10) || 7;
+    let fs = c.width * pct / 100;
+    if (!iedMeasureCtx) iedMeasureCtx = document.createElement('canvas').getContext('2d');
+    iedMeasureCtx.font = `700 ${fs}px "Segoe UI", system-ui, sans-serif`;
+    const tw = iedMeasureCtx.measureText(text).width, maxW = c.width * 0.94;
+    if (tw > maxW) fs = fs * maxW / tw;
+    return fs;
+}
+
+function iedTextPlace(e) {
+    const p = iedPt(e);
+    ied.textPos = { x: Math.min(1, Math.max(0, p.nx)), y: Math.min(1, Math.max(0, p.ny)) };
+    ied.textDrag = true;
+    try { iedEl('iedWrap').setPointerCapture(e.pointerId); } catch (_) { }
+    iedRenderTextPreview();
+    e.preventDefault();
+}
+
+function iedRenderTextPreview() {
+    const pv = iedEl('iedTextPreview'), it = iedCur();
+    const text = iedEl('iedTextInput').value;
+    if (!ied || !it || ied.mode !== 'text' || !text.trim()) { pv.style.display = 'none'; return; }
+    const c = it.canvas;
+    const fs = iedTextFontSize(text, c) * ((c.clientWidth || c.width) / c.width);
+    const o = iedOutline(ied.color);
+    pv.textContent = text;
+    pv.style.display = 'block';
+    pv.style.fontSize = fs + 'px';
+    pv.style.left = (ied.textPos.x * 100) + '%';
+    pv.style.top = (ied.textPos.y * 100) + '%';
+    pv.style.color = ied.color;
+    pv.style.textShadow = `0 0 3px ${o}, 0 0 3px ${o}, 0 0 4px ${o}, 0 0 5px ${o}`;
+}
+
+function iedTextCommit() {
+    const it = iedCur(), input = iedEl('iedTextInput');
+    if (!ied || !it) return;
+    const text = input.value.trim();
+    if (!text) { input.focus(); return; }
+    iedPushUndo(it);
+    const c = it.canvas, ctx = c.getContext('2d'), fs = iedTextFontSize(text, c);
+    ctx.font = `700 ${fs}px "Segoe UI", system-ui, sans-serif`;
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.lineJoin = 'round';
+    ctx.lineWidth = fs * 0.16;
+    ctx.strokeStyle = iedOutline(ied.color);
+    ctx.fillStyle = ied.color;
+    const x = ied.textPos.x * c.width, y = ied.textPos.y * c.height;
+    ctx.strokeText(text, x, y);
+    ctx.fillText(text, x, y);
+    input.value = '';
+    ied.textPos = { x: 0.5, y: 0.5 };
+    iedRenderTextPreview();
+    iedDrawTile(it); iedRenderStrip();
+}
+
+/* ── Light (brightness / contrast) ────────────────────────────────────── */
+
+function iedApplyFilterPreview(it) {
+    const f = (it.adj.b === 100 && it.adj.c === 100) ? '' : `brightness(${it.adj.b}%) contrast(${it.adj.c}%)`;
+    it.canvas.style.filter = f;
+    it.tile.style.filter = f;
+}
+
+function iedSyncLightSliders() {
+    const it = iedCur();
+    if (!it) return;
+    iedEl('iedBright').value = it.adj.b;
+    iedEl('iedContrast').value = it.adj.c;
+}
+
+function iedLightChanged() {
+    const it = iedCur();
+    if (!it) return;
+    it.adj.b = parseInt(iedEl('iedBright').value, 10) || 100;
+    it.adj.c = parseInt(iedEl('iedContrast').value, 10) || 100;
+    iedApplyFilterPreview(it);
+}
+
+function iedLightReset() {
+    const it = iedCur();
+    if (!it) return;
+    it.adj.b = 100; it.adj.c = 100;
+    iedSyncLightSliders();
+    iedApplyFilterPreview(it);
+}
+
+/* ── Colors ───────────────────────────────────────────────────────────── */
+
+function iedSetColor(color) {
+    if (!ied) return;
+    ied.color = color;
+    Array.prototype.forEach.call(document.querySelectorAll('#imgEditorOverlay .ied-swatch'), function (el) {
+        el.classList.toggle('active', el.getAttribute('data-c') === color);
+    });
+    iedRenderTextPreview();
+}
+
+/* ── One-time DOM wiring ──────────────────────────────────────────────── */
+
+function iedInit() {
+    if (iedInitDone) return;
+    iedInitDone = true;
+
+    // Color swatches (shared between Draw and Text panels)
+    Array.prototype.forEach.call(document.querySelectorAll('#imgEditorOverlay .ied-swatches'), function (row) {
+        IED_COLORS.forEach(function (col) {
+            const b = document.createElement('button');
+            b.type = 'button';
+            b.className = 'ied-swatch' + (col === IED_COLORS[2] ? ' active' : '');
+            b.setAttribute('data-c', col);
+            b.setAttribute('aria-label', 'Color ' + col);
+            b.style.background = col;
+            b.onclick = function () { iedSetColor(col); };
+            row.appendChild(b);
+        });
+    });
+
+    // Crop box: move + corner resize
+    const box = iedEl('iedCropBox');
+    box.addEventListener('pointerdown', function (e) {
+        if (!ied || ied.mode !== 'crop' || !iedCur()) return;
+        const h = e.target && e.target.getAttribute ? e.target.getAttribute('data-h') : null;
+        ied.drag = { type: h || 'move', sx: e.clientX, sy: e.clientY, r: iedCropPx() };
+        try { box.setPointerCapture(e.pointerId); } catch (_) { }
+        e.preventDefault(); e.stopPropagation();
+    });
+    box.addEventListener('pointermove', function (e) {
+        if (!ied || !ied.drag) return;
+        iedCropDrag(e.clientX - ied.drag.sx, e.clientY - ied.drag.sy);
+        e.preventDefault();
+    });
+    const endCrop = function () { if (ied) ied.drag = null; };
+    box.addEventListener('pointerup', endCrop);
+    box.addEventListener('pointercancel', endCrop);
+
+    // Draw / text on the photo
+    const wrap = iedEl('iedWrap');
+    wrap.addEventListener('pointerdown', function (e) {
+        if (!ied || !iedCur()) return;
+        if (ied.mode === 'draw') iedDrawStart(e);
+        else if (ied.mode === 'text') iedTextPlace(e);
+    });
+    wrap.addEventListener('pointermove', function (e) {
+        if (!ied) return;
+        if (ied.stroke) iedDrawMove(e);
+        else if (ied.textDrag) iedTextPlace(e);
+    });
+    const endTouch = function () {
+        if (!ied) return;
+        if (ied.stroke) {
+            ied.stroke = null;
+            const it = iedCur();
+            if (it) { iedDrawTile(it); }
+            iedUpdateUI();
+        }
+        ied.textDrag = false;
+    };
+    wrap.addEventListener('pointerup', endTouch);
+    wrap.addEventListener('pointercancel', endTouch);
+
+    // Text: Enter adds it
+    iedEl('iedTextInput').addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') { e.preventDefault(); iedTextCommit(); }
+    });
+
+    // Escape closes
+    document.addEventListener('keydown', function (e) {
+        if (ied && e.key === 'Escape') iedCancel();
+    });
+
+    // Fallback if ResizeObserver isn't available
+    window.addEventListener('resize', function () { if (ied) iedFit(); });
+}
+
+/* ── Thumbnails on the job card ───────────────────────────────────────── */
 
     function renderImageThumbnailsDeck(jobNum) {
         const deck = document.getElementById(`preview-deck-${jobNum}`); if (!deck) return;
         // Build the whole deck as one string and assign innerHTML once — doing
         // `deck.innerHTML += ...` in a loop instead would re-parse and
         // re-render the entire accumulated HTML on every single iteration.
+        // Tap a thumbnail to edit it again; ✕ removes it.
         const parts = (multipleFileUploadMasterMap[jobNum] || []).map((img, idx) =>
-            `<div class="preview-thumb-container"><img src="${img.base64}"><button type="button" class="remove-thumb-btn" onclick="removeImageFromDeck(${jobNum}, ${idx})">✕</button></div>`
+            `<div class="preview-thumb-container" title="Tap to edit" onclick="editExistingImage(${jobNum}, ${idx})"><img src="${img.base64}"><span class="edit-thumb-badge">✎</span><button type="button" class="remove-thumb-btn" onclick="event.stopPropagation(); removeImageFromDeck(${jobNum}, ${idx})">✕</button></div>`
         );
         deck.innerHTML = parts.join('');
     }
+
     function removeImageFromDeck(jobNum, idx) { multipleFileUploadMasterMap[jobNum].splice(idx, 1); renderImageThumbnailsDeck(jobNum); }
 
     function getCommentInitials(name) {
@@ -3351,6 +4027,82 @@ function handleMultiImageProcessing(inputElement, jobNum) {
     }
 </script>
 <!-- ══════════════════════════════ END DIAGNOSTIC REPORT REMINDER ══════════════════════════════ -->
+
+<!-- ══════════════════════════════ PHOTO EDITOR (rotate / crop / draw / text / light) ══════════════════════════════ -->
+<div id="imgEditorOverlay" class="ied-overlay" role="dialog" aria-modal="true" aria-label="Edit photos">
+    <div class="ied-top">
+        <button type="button" class="ied-icon-btn" onclick="iedCancel()" aria-label="Close editor">✕</button>
+        <div class="ied-title" id="iedTitle">Edit photo</div>
+        <button type="button" class="ied-icon-btn" id="iedUndoBtn" onclick="iedUndo()" aria-label="Undo" disabled>↶</button>
+        <button type="button" class="ied-icon-btn" id="iedDeleteBtn" onclick="iedRemoveCurrent()" aria-label="Remove this photo">🗑</button>
+    </div>
+
+    <div class="ied-stage" id="iedStage">
+        <div class="ied-loading" id="iedLoading">Loading photo…</div>
+        <div class="ied-wrap" id="iedWrap">
+            <div class="ied-crop" id="iedCrop">
+                <div class="ied-crop-box" id="iedCropBox">
+                    <i class="ied-h" data-h="tl"></i><i class="ied-h" data-h="tr"></i><i class="ied-h" data-h="bl"></i><i class="ied-h" data-h="br"></i>
+                </div>
+            </div>
+            <div class="ied-text-preview" id="iedTextPreview"></div>
+        </div>
+    </div>
+
+    <div class="ied-sub" id="iedSub">
+        <div class="ied-panel" id="iedPanel_crop">
+            <div class="ied-row wrap" id="iedRatios">
+                <button type="button" class="ied-chip active" data-r="0" onclick="iedSetRatio(0)">Free</button>
+                <button type="button" class="ied-chip" data-r="1" onclick="iedSetRatio(1)">1:1</button>
+                <button type="button" class="ied-chip" data-r="1.33333333" onclick="iedSetRatio(1.33333333)">4:3</button>
+                <button type="button" class="ied-chip" data-r="0.75" onclick="iedSetRatio(0.75)">3:4</button>
+                <button type="button" class="ied-chip" data-r="1.77777778" onclick="iedSetRatio(1.77777778)">16:9</button>
+            </div>
+            <div class="ied-row">
+                <button type="button" class="ied-btn ghost" onclick="iedSetMode('none')">Cancel</button>
+                <button type="button" class="ied-btn primary" onclick="iedCropApply()">Apply crop</button>
+            </div>
+        </div>
+
+        <div class="ied-panel" id="iedPanel_draw">
+            <div class="ied-row ied-swatches"></div>
+            <div class="ied-hint">Draw on the photo with your finger. Use ↶ to undo a stroke.</div>
+        </div>
+
+        <div class="ied-panel" id="iedPanel_text">
+            <div class="ied-row">
+                <input type="text" id="iedTextInput" maxlength="80" placeholder="Type text…" autocomplete="off" oninput="iedRenderTextPreview()">
+                <button type="button" class="ied-btn primary narrow" onclick="iedTextCommit()">Add</button>
+            </div>
+            <div class="ied-row"><span class="ied-lbl">Size</span><input type="range" id="iedTextSize" min="3" max="14" value="7" oninput="iedRenderTextPreview()"></div>
+            <div class="ied-row ied-swatches"></div>
+            <div class="ied-hint">Tap or drag on the photo to place the text, then tap Add.</div>
+        </div>
+
+        <div class="ied-panel" id="iedPanel_light">
+            <div class="ied-row"><span class="ied-lbl">Brightness</span><input type="range" id="iedBright" min="50" max="150" value="100" oninput="iedLightChanged()"></div>
+            <div class="ied-row"><span class="ied-lbl">Contrast</span><input type="range" id="iedContrast" min="50" max="150" value="100" oninput="iedLightChanged()"></div>
+            <div class="ied-row"><button type="button" class="ied-btn ghost" onclick="iedLightReset()">Reset</button></div>
+        </div>
+    </div>
+
+    <div class="ied-tools">
+        <button type="button" class="ied-tool" onclick="iedRotate(-1)" aria-label="Rotate left"><span class="ic">⟲</span>Left</button>
+        <button type="button" class="ied-tool" onclick="iedRotate(1)" aria-label="Rotate right"><span class="ic">⟳</span>Right</button>
+        <button type="button" class="ied-tool" id="iedTool_crop" onclick="iedToggleTool('crop')"><span class="ic">⛶</span>Crop</button>
+        <button type="button" class="ied-tool" id="iedTool_draw" onclick="iedToggleTool('draw')"><span class="ic">✏️</span>Draw</button>
+        <button type="button" class="ied-tool" id="iedTool_text" onclick="iedToggleTool('text')"><span class="ic">T</span>Text</button>
+        <button type="button" class="ied-tool" id="iedTool_light" onclick="iedToggleTool('light')"><span class="ic">☀</span>Light</button>
+    </div>
+
+    <div class="ied-bottom">
+        <div class="ied-strip" id="iedStrip"></div>
+        <button type="button" class="ied-done" id="iedDoneBtn" onclick="iedDone()">Add ✓</button>
+    </div>
+
+    <input type="file" id="iedAddInput" accept="image/*" multiple style="display:none;" onchange="iedAddFiles(this)">
+</div>
+<!-- ══════════════════════════════ END PHOTO EDITOR ══════════════════════════════ -->
 
 </body>
 </html>
