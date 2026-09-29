@@ -151,6 +151,31 @@
         .comment-images { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
         .feed-empty { text-align: center; color: var(--text-muted); font-size: 13px; padding: 16px 0; }
         .feed-loading { text-align: center; color: var(--text-muted); font-size: 13px; padding: 10px 0; }
+
+        /* Facebook-style reactions + replies on activity comments */
+        .fb-col { flex: 1; min-width: 0; }
+        .fb-edited { font-size: 10px; color: var(--text-muted); font-style: italic; }
+        .fb-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 14px; margin: 4px 0 0 10px; font-size: 12px; position: relative; }
+        .fb-act { background: none; border: none; padding: 2px 0; color: var(--text-muted); font-weight: 700; font-size: 12px; cursor: pointer; font-family: inherit; }
+        .fb-act:hover { text-decoration: underline; }
+        .fb-act-on { color: var(--accent-blue); }
+        .fb-like-wrap { position: relative; display: inline-flex; align-items: center; gap: 6px; }
+        .fb-picker { display: none; position: absolute; bottom: 26px; left: -6px; z-index: 50; gap: 2px; background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 30px; padding: 4px 8px; box-shadow: 0 4px 16px rgba(0,0,0,.25); white-space: nowrap; }
+        .fb-picker.open { display: flex; }
+        @media (hover: hover) { .fb-like-wrap:hover .fb-picker { display: flex; } }
+        .fb-picker button { background: none; border: none; font-size: 22px; cursor: pointer; padding: 0 3px; transition: transform .12s; }
+        .fb-picker button:hover { transform: scale(1.35) translateY(-3px); }
+        .fb-summary { margin-left: auto; margin-right: 6px; background: var(--bg-input); border: 1px solid var(--border-color); border-radius: 20px; padding: 1px 8px; font-size: 12px; color: var(--text-muted); cursor: default; }
+        .fb-replies { margin: 8px 0 0 10px; padding-left: 10px; border-left: 2px solid var(--border-color); display: flex; flex-direction: column; gap: 8px; }
+        .fb-reply { display: flex; gap: 8px; align-items: flex-start; }
+        .fb-reply-bubble { background: var(--bg-input); border: 1px solid var(--border-color); border-radius: 14px; padding: 6px 11px; min-width: 0; }
+        .fb-reply-name { font-weight: 700; font-size: 12px; color: var(--text-main); }
+        .fb-reply-text { font-size: 12.5px; color: var(--text-main); white-space: pre-wrap; word-break: break-word; line-height: 1.4; }
+        .fb-reply-meta { display: flex; gap: 12px; margin: 2px 0 0 8px; font-size: 11px; color: var(--text-muted); }
+        .fb-composer { display: none; align-items: flex-end; gap: 8px; margin: 8px 0 0 10px; }
+        .fb-composer textarea { flex: 1; min-height: 34px; max-height: 110px; resize: none; border: 1px solid var(--border-color); background: var(--bg-input); color: var(--text-main); border-radius: 18px; padding: 7px 12px; font-size: 13px; font-family: inherit; box-sizing: border-box; }
+        .fb-send { background: var(--accent-blue); color: #fff; border: none; border-radius: 50%; width: 34px; height: 34px; font-size: 14px; cursor: pointer; flex-shrink: 0; }
+        .fb-toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); background: #0f172a; color: #fff; padding: 9px 16px; border-radius: 20px; font-size: 13px; z-index: 20000; box-shadow: 0 4px 14px rgba(0,0,0,.35); }
         
         /* Lightbox Modals Elements */
         .lightbox-modal { display: none; position: fixed; z-index: 10000; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.9); align-items: center; justify-content: center; }
@@ -3410,10 +3435,181 @@ function iedInit() {
     // update, so nobody is ever shown stale activity.
     const jobHistoryCache = {};
     const JOB_HISTORY_CACHE_MAX_AGE_MS = 20 * 1000;
+
+    // ── Facebook-style reactions + replies on activity comments ──────────
+    const FB_REACTIONS = [
+        { e: '👍', n: 'Like' }, { e: '❤️', n: 'Love' }, { e: '😂', n: 'Haha' },
+        { e: '😮', n: 'Wow' }, { e: '😢', n: 'Sad' }, { e: '🙏', n: 'Thanks' }
+    ];
+    const techHistoryStore = {}; // jobNum -> ordered log array (with transient "_" UI flags)
+    const fbFind = (jobNum, logId) => (techHistoryStore[jobNum] || []).find(l => String(l.id) === String(logId));
+    const fbMe = () => String(currentTechSessionUsername || '').trim().toLowerCase();
+    function fbToast(msg) {
+        const d = document.createElement('div'); d.className = 'fb-toast'; d.textContent = msg;
+        document.body.appendChild(d); setTimeout(() => d.remove(), 2800);
+    }
+    function fbPost(body) { return fetch(WEB_APP_URL, { method: 'POST', body: JSON.stringify(body) }).then(r => r.json()); }
+    function fbSnapshot(jobNum) {
+        const stream = document.getElementById(`history-stream-${jobNum}`);
+        if (stream) jobHistoryCache[jobNum] = { html: stream.innerHTML, ts: Date.now() };
+    }
+    function fbRepaint(jobNum, logId) {
+        const log = fbFind(jobNum, logId); const el = document.getElementById('tc-' + logId);
+        if (!log || !el) return;
+        const tmp = document.createElement('div'); tmp.innerHTML = techBuildComment(jobNum, log).trim();
+        el.replaceWith(tmp.firstElementChild);
+        fbSnapshot(jobNum);
+    }
+    function fbMyReaction(log) {
+        const me = fbMe();
+        return (log.reactions || []).find(r => (r.users || []).some(u => String(u).toLowerCase() === me)) || null;
+    }
+
+    function techBuildComment(jobNum, log) {
+        const me = fbMe();
+        const idAttr = escapeHtml(String(log.id));
+        const hasId = log.id !== undefined && log.id !== null;
+        let imagesHtml = "";
+        (log.images || []).forEach(url => { if(url) { const safeUrl = escapeHtml(url).replace(/'/g, '&#39;'); imagesHtml += `<img src="${safeUrl}" loading="lazy" decoding="async" class="timeline-img-launcher" onclick="launchImageLightbox('${safeUrl}')" onerror="this.src='https://cdn-icons-png.flaticon.com/512/13434/13434972.png'">`; } });
+
+        let actionsHtml = '', repliesHtml = '', composerHtml = '';
+        if (hasId) {
+            const reactions = log.reactions || [];
+            const total = reactions.reduce((n, r) => n + r.count, 0);
+            const mine = fbMyReaction(log);
+            const mineName = mine ? (FB_REACTIONS.find(x => x.e === mine.emoji) || { n: 'Liked' }).n : '';
+            const summary = total ? `<span class="fb-summary" title="${escapeHtml(reactions.map(r => r.emoji + ' ' + (r.users || []).join(', ')).join('\n'))}">${reactions.slice().sort((x, y) => y.count - x.count).slice(0, 3).map(r => r.emoji).join('')} ${total}</span>` : '';
+            const picker = FB_REACTIONS.map(x => `<button title="${x.n}" onclick="event.stopPropagation(); techReact(${jobNum},'${idAttr}','${x.e}')">${x.e}</button>`).join('');
+            const replyCount = (log.replies || []).length;
+            actionsHtml = `
+                <div class="fb-actions">
+                    <span class="fb-like-wrap">
+                        <button class="fb-act ${mine ? 'fb-act-on' : ''}" onclick="event.stopPropagation(); techLikeClick(${jobNum},'${idAttr}')">${mine ? mine.emoji + ' ' + mineName : '👍 Like'}</button>
+                        <button class="fb-act" title="More reactions" onclick="event.stopPropagation(); techTogglePicker(${jobNum},'${idAttr}')">😊</button>
+                        <div class="fb-picker ${log._pickerOpen ? 'open' : ''}">${picker}</div>
+                    </span>
+                    <button class="fb-act" onclick="event.stopPropagation(); techToggleReply(${jobNum},'${idAttr}')">💬 Reply${replyCount ? ' (' + replyCount + ')' : ''}</button>
+                    ${summary}
+                </div>`;
+
+            const replies = log.replies || [];
+            const collapsed = replies.length > 2 && !log._repliesExpanded;
+            const shown = collapsed ? replies.slice(-1) : replies;
+            const moreBtn = collapsed ? `<button class="fb-act" style="text-align:left;" onclick="event.stopPropagation(); techExpandReplies(${jobNum},'${idAttr}')">↪ View ${replies.length - 1} earlier ${replies.length - 1 === 1 ? 'reply' : 'replies'}</button>` : '';
+            if (replies.length) {
+                repliesHtml = `<div class="fb-replies">${moreBtn}${shown.map(rp => {
+                    const rid = escapeHtml(String(rp.id));
+                    const mineReply = String(rp.username || '').toLowerCase() === me;
+                    return `<div class="fb-reply">
+                        ${getAvatarHtmlSmall(rp.authorName || rp.username)}
+                        <div style="min-width:0;">
+                            <div class="fb-reply-bubble"><div class="fb-reply-name">${escapeHtml(rp.authorName || rp.username)}</div><div class="fb-reply-text">${escapeHtml(rp.message)}</div></div>
+                            <div class="fb-reply-meta"><span>${escapeHtml(rp.timestamp)}</span>
+                                <button class="fb-act" style="font-size:11px;" onclick="event.stopPropagation(); techReplyTo(${jobNum},'${idAttr}','${escapeHtml(String(rp.authorName || rp.username)).replace(/'/g, '&#39;')}')">Reply</button>
+                                ${mineReply ? `<button class="fb-act" style="font-size:11px; color:var(--accent-red);" onclick="event.stopPropagation(); techDeleteReply(${jobNum},'${idAttr}','${rid}')">Delete</button>` : ''}
+                            </div>
+                        </div>
+                    </div>`;
+                }).join('')}</div>`;
+            }
+            composerHtml = `
+                <div class="fb-composer" style="display:${log._replyOpen ? 'flex' : 'none'};">
+                    ${getAvatarHtmlSmall(currentTechSessionName)}
+                    <textarea id="fb-reply-${idAttr}" rows="1" maxlength="500" placeholder="Write a reply…" onclick="event.stopPropagation()" oninput="techSetDraft(${jobNum},'${idAttr}',this.value)" onkeydown="techReplyKey(event,${jobNum},'${idAttr}')">${escapeHtml(log._replyDraft || '')}</textarea>
+                    <button class="fb-send" title="Send reply" onclick="event.stopPropagation(); techSendReply(${jobNum},'${idAttr}')">➤</button>
+                </div>`;
+        }
+
+        const edited = log.editedAt ? `<span class="fb-edited" title="Edited by ${escapeHtml(log.editedBy || '')} on ${escapeHtml(log.editedAt)}">(edited)</span>` : '';
+        return `<div class="comment-item" id="tc-${idAttr}">
+            ${getAvatarHtml(log.operator)}
+            <div class="fb-col">
+                <div class="comment-bubble">
+                    <div class="comment-bubble-head">
+                        <span class="comment-author">${escapeHtml(log.operator)}</span>
+                        <span class="comment-status-chip b-${String(log.status).replace(/\s+/g, '')}">${escapeHtml(log.status)}</span>
+                        <span class="comment-time">⏱️ ${escapeHtml(log.timestamp)}</span>
+                        ${edited}
+                    </div>
+                    <div class="comment-notes">${escapeHtml(log.notes) || ''}</div>
+                    ${imagesHtml ? `<div class="comment-images">${imagesHtml}</div>` : ''}
+                </div>
+                ${actionsHtml}
+                ${repliesHtml}
+                ${composerHtml}
+            </div>
+        </div>`;
+    }
+
+    function techLikeClick(jobNum, logId) {
+        const log = fbFind(jobNum, logId); if (!log) return;
+        const mine = fbMyReaction(log);
+        techReact(jobNum, logId, mine ? mine.emoji : '👍'); // tapping again removes your reaction
+    }
+    function techTogglePicker(jobNum, logId) {
+        const log = fbFind(jobNum, logId); if (!log) return;
+        log._pickerOpen = !log._pickerOpen; fbRepaint(jobNum, logId);
+    }
+    function techReact(jobNum, logId, emoji) {
+        const log = fbFind(jobNum, logId); if (!log) return;
+        log._pickerOpen = false;
+        fbPost({ action: 'toggleLogReaction', logId: logId, emoji: emoji, username: currentTechSessionUsername })
+            .then(res => {
+                if (!res.success) { fbToast(res.error || 'Could not save reaction.'); fbRepaint(jobNum, logId); return; }
+                log.reactions = res.reactions || []; fbRepaint(jobNum, logId);
+            }).catch(() => fbToast('Network error. Please try again.'));
+    }
+    function techToggleReply(jobNum, logId) {
+        const log = fbFind(jobNum, logId); if (!log) return;
+        log._replyOpen = !log._replyOpen; fbRepaint(jobNum, logId);
+        if (log._replyOpen) { const t = document.getElementById('fb-reply-' + logId); if (t) t.focus(); }
+    }
+    function techReplyTo(jobNum, logId, name) {
+        const log = fbFind(jobNum, logId); if (!log) return;
+        log._replyOpen = true; log._replyDraft = '@' + name + ' '; fbRepaint(jobNum, logId);
+        const t = document.getElementById('fb-reply-' + logId);
+        if (t) { t.focus(); t.setSelectionRange(t.value.length, t.value.length); }
+    }
+    function techExpandReplies(jobNum, logId) {
+        const log = fbFind(jobNum, logId); if (!log) return;
+        log._repliesExpanded = true; fbRepaint(jobNum, logId);
+    }
+    function techSetDraft(jobNum, logId, val) { const log = fbFind(jobNum, logId); if (log) log._replyDraft = val; }
+    function techReplyKey(ev, jobNum, logId) {
+        if (ev.key === 'Enter' && !ev.shiftKey) { ev.preventDefault(); techSendReply(jobNum, logId); }
+    }
+    function techSendReply(jobNum, logId) {
+        const log = fbFind(jobNum, logId); if (!log) return;
+        const message = (log._replyDraft || '').trim();
+        if (!message) { fbToast('Reply cannot be empty.'); return; }
+        fbPost({ action: 'addLogReply', logId: logId, username: currentTechSessionUsername, message: message })
+            .then(res => {
+                if (!res.success) { fbToast(res.error || 'Could not send reply.'); return; }
+                log.replies = res.replies || []; log._replyDraft = ''; log._replyOpen = true; log._repliesExpanded = true;
+                fbRepaint(jobNum, logId);
+                const t = document.getElementById('fb-reply-' + logId); if (t) t.focus();
+            }).catch(() => fbToast('Network error. Please try again.'));
+    }
+    function techDeleteReply(jobNum, logId, replyId) {
+        if (!confirm('Delete your reply?')) return;
+        const log = fbFind(jobNum, logId); if (!log) return;
+        fbPost({ action: 'deleteLogReply', replyId: replyId, requester: currentTechSessionUsername })
+            .then(res => {
+                if (!res.success) { fbToast(res.error || 'Could not delete reply.'); return; }
+                log.replies = (log.replies || []).filter(r => String(r.id) !== String(replyId)); fbRepaint(jobNum, logId);
+            }).catch(() => fbToast('Network error. Please try again.'));
+    }
+
+    // Re-opening/closing the same card (or switching sub-tabs back to
+    // "Update" and back) used to re-download the full activity feed — text
+    // and image URLs — from scratch every single time, even seconds apart.
+    // A short-lived cache per job number avoids that; it's invalidated
+    // immediately by passing forceRefresh=true right after posting a new
+    // update, so nobody is ever shown stale activity.
     function loadJobHistoryTimeline(jobNum, forceRefresh) {
         const stream = document.getElementById(`history-stream-${jobNum}`); if(!stream) return;
         const cached = jobHistoryCache[jobNum];
-        if (!forceRefresh && cached && (Date.now() - cached.ts) < JOB_HISTORY_CACHE_MAX_AGE_MS) {
+        if (!forceRefresh && cached && techHistoryStore[jobNum] && (Date.now() - cached.ts) < JOB_HISTORY_CACHE_MAX_AGE_MS) {
             stream.innerHTML = cached.html;
             return;
         }
@@ -3421,6 +3617,7 @@ function iedInit() {
         fetch(`${WEB_APP_URL}?action=getJobHistory&jobNum=${jobNum}`).then(res => res.json()).then(data => {
             if(!data.success || data.history.length === 0) {
                 const emptyHtml = `<div class="feed-empty">No activity yet — updates will appear here like comments.</div>`;
+                techHistoryStore[jobNum] = [];
                 stream.innerHTML = emptyHtml;
                 jobHistoryCache[jobNum] = { html: emptyHtml, ts: Date.now() };
                 return;
@@ -3433,25 +3630,21 @@ function iedInit() {
             const ordered = allTimestampsParseable
                 ? raw.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
                 : raw.reverse(); // fallback: sheet rows are appended oldest→newest, so reversing puts newest first
-            let feedHtml = "";
+
+            // Keep open reply boxes / drafts across a refresh.
+            const prev = techHistoryStore[jobNum] || [];
             ordered.forEach(log => {
-                let imagesHtml = "";
-                log.images.forEach(url => { if(url) { const safeUrl = escapeHtml(url).replace(/'/g, '&#39;'); imagesHtml += `<img src="${safeUrl}" loading="lazy" decoding="async" class="timeline-img-launcher" onclick="launchImageLightbox('${safeUrl}')" onerror="this.src='https://cdn-icons-png.flaticon.com/512/13434/13434972.png'">`; } });
-                feedHtml += `<div class="comment-item">
-                    ${getAvatarHtml(log.operator)}
-                    <div class="comment-bubble">
-                        <div class="comment-bubble-head">
-                            <span class="comment-author">${escapeHtml(log.operator)}</span>
-                            <span class="comment-status-chip b-${String(log.status).replace(/\s+/g, '')}">${escapeHtml(log.status)}</span>
-                            <span class="comment-time">⏱️ ${escapeHtml(log.timestamp)}</span>
-                        </div>
-                        <div class="comment-notes">${escapeHtml(log.notes) || ''}</div>
-                        ${imagesHtml ? `<div class="comment-images">${imagesHtml}</div>` : ''}
-                    </div>
-                </div>`;
+                const old = prev.find(o => String(o.id) === String(log.id));
+                if (old) ['_replyOpen', '_replyDraft', '_repliesExpanded'].forEach(k => { if (old[k] !== undefined) log[k] = old[k]; });
             });
+            techHistoryStore[jobNum] = ordered;
+
+            let feedHtml = "";
+            ordered.forEach(log => { feedHtml += techBuildComment(jobNum, log); });
             stream.innerHTML = feedHtml;
             jobHistoryCache[jobNum] = { html: feedHtml, ts: Date.now() };
+        }).catch(() => {
+            stream.innerHTML = `<div class="feed-empty">Could not load activity. Please retry.</div>`;
         });
     }
 
