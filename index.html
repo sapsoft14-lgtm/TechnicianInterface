@@ -575,6 +575,25 @@
             .filter-pill.active { animation: popScaleIn 0.3s ease; }
             .filter-pill:active { transform: scale(0.94); }
         }
+    
+        /* ── Salary & transport modal ── */
+        .btn-salary-bell { background: rgba(6,214,160,0.12); color: var(--accent-green); border: 1px solid var(--accent-green); padding: 9px 12px; border-radius: 8px; cursor: pointer; font-weight: 700; font-size: 13px; }
+        .salary-modal-card { background: var(--bg-card); border-radius: 16px; padding: 20px; width: 100%; max-width: 560px; border: 1px solid var(--border-color); max-height: 92vh; overflow-y: auto; margin: 0 8px; }
+        .sal-period { font-size: 12px; color: var(--text-muted); margin: -4px 0 10px; }
+        .sal-empty { color: var(--text-muted); font-size: 13px; padding: 10px 0; text-align: center; }
+        .sal-dates { display: flex; gap: 10px; margin-top: 14px; } .sal-dates > div { flex: 1; min-width: 0; }
+        .sal-actions { display: flex; gap: 10px; margin-top: 10px; } .sal-actions .btn { flex: 1; }
+        .sal-btn-ghost { background: transparent !important; color: var(--text-main) !important; border: 1px solid var(--border-color) !important; }
+        .sal-error { display: none; margin-top: 10px; padding: 10px; border-radius: 8px; font-size: 13px; font-weight: 700; background: rgba(239,71,111,0.15); color: var(--accent-red); }
+        .sal-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 16px 0; }
+        .sal-stat { background: var(--bg-input); border: 1px solid var(--border-color); border-radius: 12px; padding: 10px 12px; font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; }
+        .sal-stat b { display: block; font-size: 15px; color: var(--text-main); margin-top: 3px; text-transform: none; }
+        .sal-stat.wide { grid-column: 1 / -1; } .sal-stat.warn b { color: var(--accent-red); } .sal-stat.good b { color: var(--accent-green); }
+        .sal-row { padding: 12px 0; border-bottom: 1px solid var(--border-color); font-size: 13px; } .sal-row:last-child { border-bottom: none; }
+        .sal-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+        .sal-pill { font-size: 11px; font-weight: 800; padding: 3px 10px; border-radius: 20px; color: #fff; }
+        .sal-line { display: flex; justify-content: space-between; gap: 10px; color: var(--text-muted); margin: 3px 0; } .sal-line b { color: var(--text-main); font-weight: 600; text-align: right; }
+        .sal-note { color: var(--text-muted); font-size: 12px; margin-top: 4px; font-style: italic; }
     </style>
     <style id="imgEditorStyles">
         /* ═══ PHOTO EDITOR (WhatsApp-style) — always dark, independent of portal theme ═══ */
@@ -705,6 +724,7 @@
                     <button type="button" class="btn-notif-bell" onclick="toggleNotifPanel()">🔔 <span class="notif-badge" id="notifBadge" style="display:none;">0</span></button>
                 </div>
                 <button type="button" class="btn-team-bell" onclick="openTeamPanel()">🏆 Team</button>
+                <button type="button" class="btn-salary-bell" onclick="openSalaryModal()">💰 Salary</button>
                 <button type="button" class="btn-profile-avatar" id="profileAvatarBtn" onclick="openProfileModal()" title="Profile Settings"><span class="avatar-fallback" id="profileAvatarFallback">?</span><img id="profileAvatarImg" style="display:none;"></button>
                 <button onclick="logOutSession()" class="btn">Sign Out</button>
             </div>
@@ -881,6 +901,30 @@
 
         <button type="button" class="btn" style="width:100%;" onclick="submitProfileUpdate()" id="profileSaveBtn">Save Changes</button>
         <div id="profileModalMsg" class="msg-alert"></div>
+    </div>
+</div>
+
+
+<!-- ── Salary & Transport Modal ── -->
+<div id="salaryModal" class="lightbox-modal" style="align-items:flex-start; padding-top:4vh;" onclick="if(event.target===this) closeSalaryModal()">
+    <div class="salary-modal-card" onclick="event.stopPropagation()">
+        <h2 style="display:flex; justify-content:space-between; align-items:center;">💰 My Salary &amp; Transport <span style="cursor:pointer; font-size:20px; color:var(--text-muted);" onclick="closeSalaryModal()">×</span></h2>
+        <div class="sal-period" id="salaryPeriodLabel"></div>
+        <div id="salaryChart"></div>
+
+        <div class="sal-dates">
+            <div class="form-group"><label>From</label><input type="date" id="salFrom"></div>
+            <div class="form-group"><label>To</label><input type="date" id="salTo"></div>
+        </div>
+        <div class="sal-actions">
+            <button type="button" class="btn" id="salViewBtn" onclick="loadSalary()">View</button>
+            <button type="button" class="btn sal-btn-ghost" id="salPdfBtn" onclick="downloadSalaryPdf()">⬇ Download PDF</button>
+        </div>
+        <div class="sal-error" id="salError"></div>
+
+        <div id="salaryStats"></div>
+        <div class="profile-section-label" style="margin-top:6px;">Daily updates</div>
+        <div id="salaryList"></div>
     </div>
 </div>
 
@@ -4315,5 +4359,226 @@ function iedInit() {
 </div>
 <!-- ══════════════════════════════ END PHOTO EDITOR ══════════════════════════════ -->
 
+<script>
+/* ═════════ Salary & transport (reads from the separate Salary system) ═════════
+   Looks you up in the salary system by your NAME (falls back to username), so
+   your name here must match the name the admin added in the salary system. */
+const SALARY_API_URL = "https://acdyletpjdmrqddylgcn.supabase.co/functions/v1/smart-responder";
+const SALARY_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFjZHlsZXRwamRtcnFkZHlsZ2NuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODk4MDA2NTUsImV4cCI6MjEwNTM3NjY1NX0.2JaoROSxmbbo1Dah-oiBqKULru1Gz8koL0wBlMJbEyI";
+
+function salaryRun(fnName, ...args){
+    return fetch(SALARY_API_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'apikey': SALARY_ANON_KEY, 'Authorization': 'Bearer ' + SALARY_ANON_KEY },
+        body: JSON.stringify({ fn: fnName, args: args })
+    }).then(r => r.json()).then(d => { if(!d.ok) throw new Error(d.error || 'Request failed.'); return d.result; });
+}
+function salEsc(v){ return String(v == null ? '' : v).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+/* ---------- Salary helpers (shared chart + formatting) ---------- */
+const SAL_ATT = { present:'Present', half_day:'Half day', absent:'Absent', leave:'Leave' };
+function salRs(n){ return 'Rs. ' + Number(n || 0).toLocaleString(undefined, { minimumFractionDigits:2, maximumFractionDigits:2 }); }
+function salYmd(d){ const p = n => String(n).padStart(2,'0'); return d.getFullYear() + '-' + p(d.getMonth()+1) + '-' + p(d.getDate()); }
+function salFmtDate(s){ return new Date(s + 'T00:00:00').toLocaleDateString([], { weekday:'short', day:'numeric', month:'short', year:'numeric' }); }
+function salCompact(v){ const a = Math.abs(v); if(a >= 1e6) return (v/1e6).toFixed(1) + 'M'; if(a >= 1000) return (v/1000).toFixed(a % 1000 ? 1 : 0) + 'k'; return String(Math.round(v)); }
+
+/* Adds a running arrears figure to each entry (ascending order in, same order out). */
+function salWithRunning(entries, opening){
+  let sRun = Number(opening && opening.salary_arrears || 0), tRun = Number(opening && opening.transport_arrears || 0);
+  return entries.map(e => {
+    sRun += Number(e.salary_due) - Number(e.salary_paid);
+    tRun += Number(e.transport_due) - Number(e.transport_paid);
+    return Object.assign({}, e, { run_salary: sRun, run_transport: tRun, run_total: sRun + tRun });
+  });
+}
+
+/* Groups entries into day / week / month buckets depending on how long the period is. */
+function salBuckets(runEntries){
+  if(!runEntries.length) return [];
+  const first = new Date(runEntries[0].entry_date + 'T00:00:00');
+  const last = new Date(runEntries[runEntries.length-1].entry_date + 'T00:00:00');
+  const span = (last - first) / 864e5;
+  const mode = span <= 31 ? 'day' : span <= 150 ? 'week' : 'month';
+  const map = new Map();
+  runEntries.forEach(e => {
+    const d = new Date(e.entry_date + 'T00:00:00');
+    let key, label;
+    if(mode === 'day'){ key = e.entry_date; label = d.toLocaleDateString([], { day:'numeric', month:'short' }); }
+    else if(mode === 'week'){ const m = new Date(d); m.setDate(m.getDate() - ((m.getDay() + 6) % 7)); key = salYmd(m); label = 'Wk ' + m.toLocaleDateString([], { day:'numeric', month:'short' }); }
+    else { key = e.entry_date.slice(0,7); label = d.toLocaleDateString([], { month:'short', year:'2-digit' }); }
+    let b = map.get(key);
+    if(!b){ b = { label, salary:0, transport:0, arrears:0 }; map.set(key, b); }
+    b.salary += Number(e.salary_paid); b.transport += Number(e.transport_paid);
+    b.arrears = e.run_total;
+  });
+  return Array.from(map.values());
+}
+
+/* Inline SVG: bars = salary paid / transport paid, line = running arrears. Theme-aware via CSS vars. */
+function salChartHtml(runEntries){
+  const b = salBuckets(runEntries);
+  if(!b.length) return '<div class="sal-empty" style="text-align:center;padding:24px 0;">No salary updates in this period.</div>';
+  const W = 640, H = 250, L = 50, R = 12, T = 14, B = 34;
+  const vals = []; b.forEach(x => vals.push(x.salary, x.transport, x.arrears));
+  let max = Math.max(0, ...vals), min = Math.min(0, ...vals);
+  if(max === min) max = min + 1;
+  const ph = H - T - B, pw = W - L - R;
+  const y = v => T + ph * (1 - (v - min) / (max - min));
+  const step = pw / b.length, bw = Math.max(3, Math.min(18, step * 0.32));
+  let g = '';
+  for(let i = 0; i <= 4; i++){
+    const v = min + (max - min) * i / 4, yy = y(v);
+    g += `<line x1="${L}" x2="${W-R}" y1="${yy}" y2="${yy}" style="stroke:var(--border-color)" stroke-width="1"/>` +
+         `<text x="${L-6}" y="${yy+3}" text-anchor="end" font-size="10" style="fill:var(--text-muted)">${salCompact(v)}</text>`;
+  }
+  const every = Math.ceil(b.length / 9);
+  let bars = '', pts = [], dots = '', labels = '';
+  b.forEach((x, i) => {
+    const cx = L + step * (i + .5), y0 = y(0);
+    const bar = (v, dx, color) => { const yy = y(v); return `<rect x="${dx}" y="${Math.min(yy,y0)}" width="${bw}" height="${Math.max(1, Math.abs(y0-yy))}" rx="2" style="fill:var(${color})"/>`; };
+    bars += bar(x.salary, cx - bw - 1, '--primary') + bar(x.transport, cx + 1, '--success');
+    pts.push(cx + ',' + y(x.arrears));
+    dots += `<circle cx="${cx}" cy="${y(x.arrears)}" r="3" style="fill:var(--accent-orange)"><title>${x.label}: arrears ${salRs(x.arrears)}</title></circle>`;
+    if(i % every === 0) labels += `<text x="${cx}" y="${H-12}" text-anchor="middle" font-size="10" style="fill:var(--text-muted)">${x.label}</text>`;
+  });
+  const line = pts.length > 1 ? `<polyline points="${pts.join(' ')}" fill="none" stroke-width="2.2" stroke-linejoin="round" style="stroke:var(--accent-orange)"/>` : '';
+  return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;display:block;" role="img" aria-label="Salary and transport paid with running arrears">${g}${bars}${line}${dots}${labels}</svg>
+    <div style="display:flex;gap:14px;flex-wrap:wrap;font-size:.78rem;color:var(--text-muted);margin-top:8px;">
+      <span><i style="display:inline-block;width:10px;height:10px;border-radius:2px;background:var(--accent-blue);margin-right:5px;"></i>Salary paid</span>
+      <span><i style="display:inline-block;width:10px;height:10px;border-radius:2px;background:var(--accent-green);margin-right:5px;"></i>Transport paid</span>
+      <span><i style="display:inline-block;width:14px;height:3px;border-radius:2px;background:var(--accent-orange);margin-right:5px;vertical-align:middle;"></i>Arrears (running)</span>
+    </div>`;
+}
+
+let salaryData = null;
+
+function loadScriptOnce(src){
+    return new Promise((resolve, reject) => {
+        if(document.querySelector('script[src="' + src + '"]')) return resolve();
+        const s = document.createElement('script'); s.src = src; s.onload = resolve;
+        s.onerror = () => reject(new Error('Could not load the PDF library. Check your connection.'));
+        document.head.appendChild(s);
+    });
+}
+function salShowError(msg){ const el = document.getElementById('salError'); el.textContent = msg || ''; el.style.display = msg ? 'block' : 'none'; }
+
+function openSalaryModal(){
+    document.getElementById('salaryModal').style.display = 'flex';
+    if(!document.getElementById('salFrom').value){
+        const now = new Date();
+        document.getElementById('salFrom').value = salYmd(new Date(now.getFullYear(), now.getMonth(), 1));
+        document.getElementById('salTo').value = salYmd(now);
+    }
+    loadSalary();
+}
+function closeSalaryModal(){ document.getElementById('salaryModal').style.display = 'none'; }
+
+async function loadSalary(){
+    salShowError('');
+    const from = document.getElementById('salFrom').value || null;
+    const to = document.getElementById('salTo').value || null;
+    if(from && to && from > to){ salShowError('"From" must be before "To".'); return; }
+    document.getElementById('salaryChart').innerHTML = '<div class="sal-empty">Loading…</div>';
+    document.getElementById('salaryStats').innerHTML = '';
+    document.getElementById('salaryList').innerHTML = '';
+    try{
+        const r = await salaryRun('getSalaryReportByName', currentTechSessionName, currentTechSessionUsername || null, from, to);
+        salaryData = { technician_name: r.technician_name || currentTechSessionName, opening: r.opening, totals: r.totals,
+                       entries: salWithRunning(r.entries, r.opening), from, to };
+        renderSalary();
+    }catch(e){
+        salaryData = null;
+        document.getElementById('salaryChart').innerHTML = '';
+        salShowError(e.message || 'Could not load salary details.');
+    }
+}
+
+function salClosing(d){
+    const o = d.opening, t = d.totals;
+    const sal = Number(o.salary_arrears) + Number(t.salary_due) - Number(t.salary_paid);
+    const tr = Number(o.transport_arrears) + Number(t.transport_due) - Number(t.transport_paid);
+    return { sal, tr, total: sal + tr };
+}
+
+function renderSalary(){
+    const d = salaryData, t = d.totals, c = salClosing(d);
+    const nice = s => s ? new Date(s + 'T00:00:00').toLocaleDateString([], { day:'numeric', month:'short', year:'numeric' }) : '…';
+    document.getElementById('salaryPeriodLabel').textContent = nice(d.from) + ' – ' + nice(d.to);
+    document.getElementById('salaryChart').innerHTML = salChartHtml(d.entries);
+    const opening = Number(d.opening.salary_arrears) + Number(d.opening.transport_arrears);
+    document.getElementById('salaryStats').innerHTML = `<div class="sal-grid">
+        <div class="sal-stat">Salary paid<b>${salRs(t.salary_paid)}</b></div>
+        <div class="sal-stat">Transport paid<b>${salRs(t.transport_paid)}</b></div>
+        <div class="sal-stat">Salary earned<b>${salRs(t.salary_due)}</b></div>
+        <div class="sal-stat">Transport earned<b>${salRs(t.transport_due)}</b></div>
+        ${d.from ? `<div class="sal-stat wide">Arrears brought forward<b>${salRs(opening)}</b></div>` : ''}
+        <div class="sal-stat ${c.sal > 0 ? 'warn' : 'good'}">Salary arrears<b>${salRs(c.sal)}</b></div>
+        <div class="sal-stat ${c.tr > 0 ? 'warn' : 'good'}">Transport arrears<b>${salRs(c.tr)}</b></div>
+        <div class="sal-stat wide ${c.total > 0 ? 'warn' : 'good'}">Total arrears at end of period<b>${salRs(c.total)}</b></div>
+        <div class="sal-stat wide">Attendance<b style="font-size:13px;">${t.present} present · ${t.half_day} half day · ${t.absent} absent · ${t.leave} leave</b></div>
+    </div>`;
+    const bg = { present:'var(--accent-green)', half_day:'var(--accent-orange)', absent:'var(--accent-red)', leave:'#64748b' };
+    document.getElementById('salaryList').innerHTML = d.entries.length
+        ? d.entries.slice().reverse().map(e => `<div class="sal-row">
+            <div class="sal-top"><b>${salFmtDate(e.entry_date)}</b><span class="sal-pill" style="background:${bg[e.attendance] || '#64748b'};">${SAL_ATT[e.attendance] || salEsc(e.attendance)}</span></div>
+            <div class="sal-line"><span>Salary paid / earned</span><b>${salRs(e.salary_paid)} / ${salRs(e.salary_due)}</b></div>
+            <div class="sal-line"><span>Transport paid / earned</span><b>${salRs(e.transport_paid)} / ${salRs(e.transport_due)}</b></div>
+            <div class="sal-line"><span>Arrears so far</span><b style="color:${e.run_total > 0 ? 'var(--accent-red)' : 'var(--accent-green)'};">${salRs(e.run_total)}</b></div>
+            ${e.note ? `<div class="sal-note">${salEsc(e.note)}</div>` : ''}</div>`).join('')
+        : '<div class="sal-empty">No salary updates in this period.</div>';
+}
+
+async function downloadSalaryPdf(){
+    salShowError('');
+    const btn = document.getElementById('salPdfBtn');
+    if(!salaryData){ await loadSalary(); if(!salaryData) return; }
+    btn.disabled = true; const label = btn.textContent; btn.textContent = 'Preparing…';
+    try{
+        await loadScriptOnce('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js');
+        await loadScriptOnce('https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js');
+        const d = salaryData, t = d.totals, c = salClosing(d);
+        const doc = new window.jspdf.jsPDF({ unit:'pt', format:'a4' });
+        const nice = s => s ? new Date(s + 'T00:00:00').toLocaleDateString([], { day:'numeric', month:'short', year:'numeric' }) : 'start';
+        const money = n => Number(n || 0).toLocaleString('en-US', { minimumFractionDigits:2, maximumFractionDigits:2 });
+        doc.setFontSize(18); doc.setFont('helvetica', 'bold'); doc.text('Salary & Transport Statement', 40, 50);
+        doc.setFontSize(11); doc.setFont('helvetica', 'normal');
+        doc.text('Technician: ' + d.technician_name, 40, 72);
+        doc.text('Period: ' + nice(d.from) + ' to ' + (d.to ? nice(d.to) : 'today'), 40, 88);
+        doc.setTextColor(120); doc.text('Generated ' + new Date().toLocaleString(), 40, 104); doc.setTextColor(0);
+        doc.autoTable({
+            startY: 118, theme: 'grid', styles: { fontSize: 10 }, headStyles: { fillColor: [31,111,235] },
+            head: [['Summary', 'Salary (Rs.)', 'Transport (Rs.)', 'Total (Rs.)']],
+            body: [
+                ['Arrears brought forward', money(d.opening.salary_arrears), money(d.opening.transport_arrears), money(Number(d.opening.salary_arrears) + Number(d.opening.transport_arrears))],
+                ['Earned in period', money(t.salary_due), money(t.transport_due), money(Number(t.salary_due) + Number(t.transport_due))],
+                ['Paid in period', money(t.salary_paid), money(t.transport_paid), money(Number(t.salary_paid) + Number(t.transport_paid))],
+                ['Arrears at end of period', money(c.sal), money(c.tr), money(c.total)]
+            ],
+            didParseCell: h => { if(h.row.index === 3 && h.section === 'body') h.cell.styles.fontStyle = 'bold'; },
+            columnStyles: { 1:{halign:'right'}, 2:{halign:'right'}, 3:{halign:'right'} }
+        });
+        doc.setFontSize(10);
+        doc.text(`Attendance: ${t.present} present, ${t.half_day} half day, ${t.absent} absent, ${t.leave} leave`, 40, doc.lastAutoTable.finalY + 18);
+        doc.autoTable({
+            startY: doc.lastAutoTable.finalY + 30, theme: 'striped', styles: { fontSize: 8.5, cellPadding: 4 }, headStyles: { fillColor: [31,111,235] },
+            head: [['Date', 'Attendance', 'Salary earned', 'Salary paid', 'Transport earned', 'Transport paid', 'Arrears', 'Note']],
+            body: d.entries.map(e => [
+                new Date(e.entry_date + 'T00:00:00').toLocaleDateString([], { day:'2-digit', month:'short', year:'numeric' }),
+                SAL_ATT[e.attendance] || e.attendance, money(e.salary_due), money(e.salary_paid),
+                money(e.transport_due), money(e.transport_paid), money(e.run_total), e.note || ''
+            ]),
+            columnStyles: { 2:{halign:'right'}, 3:{halign:'right'}, 4:{halign:'right'}, 5:{halign:'right'}, 6:{halign:'right'}, 7:{cellWidth:90} }
+        });
+        const pages = doc.internal.getNumberOfPages();
+        for(let i = 1; i <= pages; i++){
+            doc.setPage(i); doc.setFontSize(8); doc.setTextColor(140);
+            doc.text('Page ' + i + ' of ' + pages, doc.internal.pageSize.getWidth() - 40, doc.internal.pageSize.getHeight() - 20, { align:'right' });
+        }
+        doc.save(`salary_${d.technician_name.replace(/[^a-z0-9]+/gi, '_')}_${d.from || 'start'}_to_${d.to || salYmd(new Date())}.pdf`);
+    }catch(e){
+        salShowError(e.message || 'Could not create the PDF.');
+    }
+    btn.disabled = false; btn.textContent = label;
+}
+</script>
 </body>
 </html>
