@@ -4394,7 +4394,7 @@ function salHoursText(m){ return m == null ? '' : Math.floor(m/60) + 'h ' + Stri
 function salWithRunning(entries, opening){
   let sRun = Number(opening && opening.salary_arrears || 0), tRun = Number(opening && opening.transport_arrears || 0);
   return entries.map(e => {
-    sRun += Number(e.salary_due) - Number(e.etf_deduction || 0) - Number(e.salary_paid) - Number(e.arrears_salary_paid || 0);
+    sRun += Number(e.salary_due) - Number(e.salary_paid) - Number(e.arrears_salary_paid || 0);
     tRun += Number(e.transport_due) - Number(e.transport_paid) - Number(e.arrears_transport_paid || 0);
     return Object.assign({}, e, { run_salary: sRun, run_transport: tRun, run_total: sRun + tRun });
   });
@@ -4503,7 +4503,7 @@ async function loadSalary(){
 
 function salClosing(d){
   const o = d.opening, t = d.totals;
-  const sal = Number(o.salary_arrears) + Number(t.salary_due) - Number(t.etf || 0) - Number(t.salary_paid) - Number(t.arrears_salary_paid || 0);
+  const sal = Number(o.salary_arrears) + Number(t.salary_due) - Number(t.salary_paid) - Number(t.arrears_salary_paid || 0);
   const tr = Number(o.transport_arrears) + Number(t.transport_due) - Number(t.transport_paid) - Number(t.arrears_transport_paid || 0);
   return { sal, tr, total: sal + tr };
 }
@@ -4566,7 +4566,7 @@ async function downloadSalaryPdf(){
       ['Arrears brought forward', money(d.opening.salary_arrears), money(d.opening.transport_arrears), money(Number(d.opening.salary_arrears) + Number(d.opening.transport_arrears))],
       ['Earned in period', money(t.salary_due), money(t.transport_due), money(Number(t.salary_due) + Number(t.transport_due))]
     ];
-    if(Number(t.etf)) sumBody.push(['Less: ETF deducted', money(t.etf), '0.00', money(t.etf)]);
+    if(Number(t.etf)) sumBody.push(['ETF deducted (info only)', money(t.etf), '0.00', money(t.etf)]);
     sumBody.push(['Paid in period', money(t.salary_paid), money(t.transport_paid), money(Number(t.salary_paid) + Number(t.transport_paid))]);
     if(Number(t.arrears_salary_paid) || Number(t.arrears_transport_paid)) sumBody.push(['Arrears settled', money(t.arrears_salary_paid), money(t.arrears_transport_paid), money(Number(t.arrears_salary_paid) + Number(t.arrears_transport_paid))]);
     sumBody.push(['Arrears at end of period', money(c.sal), money(c.tr), money(c.total)]);
