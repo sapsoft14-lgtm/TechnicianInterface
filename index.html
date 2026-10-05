@@ -1429,14 +1429,41 @@
         bar.style.display = 'block';
     }
 
+    // ---- Egress helpers: ETag ("not modified") + image compression ----
+    const _etags = {};
+    function etagQ_(key, hasData) { return (_etags[key] && hasData) ? `&etag=${encodeURIComponent(_etags[key])}` : ''; }
+    function compressImageToDataUrl_(file, maxDim, quality) {
+        return new Promise((resolve, reject) => {
+            const fr = new FileReader();
+            fr.onerror = reject;
+            fr.onload = () => {
+                const img = new Image();
+                img.onerror = () => resolve(fr.result);
+                img.onload = () => {
+                    try {
+                        let w = img.width, h = img.height;
+                        const k = Math.min(1, maxDim / Math.max(w, h));
+                        w = Math.round(w * k); h = Math.round(h * k);
+                        const c = document.createElement('canvas'); c.width = w; c.height = h;
+                        c.getContext('2d').drawImage(img, 0, 0, w, h);
+                        resolve(c.toDataURL('image/jpeg', quality));
+                    } catch (e) { resolve(fr.result); }
+                };
+                img.src = fr.result;
+            };
+            fr.readAsDataURL(file);
+        });
+    }
+
     function fetchTechWorkQueue() {
         if (document.activeElement && (document.activeElement.tagName === "TEXTAREA" || document.activeElement.tagName === "INPUT" || document.activeElement.tagName === "SELECT")) return; 
         if (techQueueFetchInFlight) return; // previous call hasn't returned yet — don't stack another
         if (isTechIdle() && (Date.now() - lastTechQueuePollTs) < 8000 * IDLE_POLL_MULTIPLIER) return;
         techQueueFetchInFlight = true; lastTechQueuePollTs = Date.now();
-        fetch(`${WEB_APP_URL}?action=getTechQueue&techName=${encodeURIComponent(currentTechSessionName)}`)
+        fetch(`${WEB_APP_URL}?action=getTechQueue&techName=${encodeURIComponent(currentTechSessionName)}${etagQ_('queue', localJobsMasterArray && localJobsMasterArray.length)}`)
         .then(res => res.json()).then(data => { 
-            if(data.success) { localJobsMasterArray = data.jobs; updatePendingNewsBar(localJobsMasterArray); evaluateFilterPipeline(); } 
+            if(data.success && data.notModified) { return; }
+            if(data.success) { if (data.etag) _etags.queue = data.etag; localJobsMasterArray = data.jobs; updatePendingNewsBar(localJobsMasterArray); evaluateFilterPipeline(); } 
         }).finally(() => { techQueueFetchInFlight = false; });
     }
 
@@ -1449,6 +1476,7 @@
         fetch(`${WEB_APP_URL}?action=getTechQueue&techName=${encodeURIComponent(currentTechSessionName)}`)
         .then(res => res.json()).then(data => { 
             if(data.success) { 
+                if (data.etag) _etags.queue = data.etag;
                 localJobsMasterArray = data.jobs; 
                 updatePendingNewsBar(localJobsMasterArray); 
                 evaluateFilterPipeline(); 
@@ -1865,10 +1893,12 @@
         if (notifFetchInFlight) return;
         if (isTechIdle() && (Date.now() - lastNotifPollTs) < 25000 * IDLE_POLL_MULTIPLIER) return;
         notifFetchInFlight = true; lastNotifPollTs = Date.now();
-        fetch(`${WEB_APP_URL}?action=getNotifications&limit=${NOTIF_PAGE_SIZE}&offset=0`)
+        fetch(`${WEB_APP_URL}?action=getNotifications&limit=${NOTIF_PAGE_SIZE}&offset=0${etagQ_('notif', notifFeedCache && notifFeedCache.length)}`)
         .then(res => res.json())
         .then(data => {
+            if (data.success && data.notModified) return;
             if (data.success) {
+                if (data.etag) _etags.notif = data.etag;
                 notifFeedCache = data.notifications;
                 // Backend may not know about paging yet — if it ignores limit/offset
                 // and just returns everything, treat that as "no more pages".
@@ -2235,10 +2265,11 @@
         if (teamStatsFetchInFlight) return;
         if (isTechIdle() && (Date.now() - lastTeamStatsPollTs) < 45000 * IDLE_POLL_MULTIPLIER) return;
         teamStatsFetchInFlight = true; lastTeamStatsPollTs = Date.now();
-        fetch(`${WEB_APP_URL}?action=getTeamStats&techName=${encodeURIComponent(currentTechSessionName)}`)
+        fetch(`${WEB_APP_URL}?action=getTeamStats&techName=${encodeURIComponent(currentTechSessionName)}${etagQ_('team', myStatsCache || (leaderboardCache && leaderboardCache.length))}`)
         .then(res => res.json())
         .then(data => {
-            if (!data.success) return;
+            if (!data.success || data.notModified) return;
+            if (data.etag) _etags.team = data.etag;
             leaderboardCache = data.leaderboard || [];
             myStatsCache = data.myStats || null;
             kudosFeedCache = data.kudos || [];
@@ -3402,14 +3433,12 @@ function iedInit() {
         const file = event.target.files[0];
         if (!file) return;
         if (!file.type.startsWith('image/')) { alert('Please choose an image file.'); event.target.value = ""; return; }
-        const reader = new FileReader();
-        reader.onload = function(e) {
-            selectedProfilePicBase64 = e.target.result;
+        compressImageToDataUrl_(file, 500, 0.8).then(function(dataUrl) {
+            selectedProfilePicBase64 = dataUrl;
             const previewImg = document.getElementById('profilePicPreviewImg');
             const previewFallback = document.getElementById('profilePicPreviewFallback');
             previewImg.src = selectedProfilePicBase64; previewImg.style.display = 'block'; previewFallback.style.display = 'none';
-        };
-        reader.readAsDataURL(file);
+        });
     }
 
     function submitProfileUpdate() {
@@ -3849,9 +3878,11 @@ function iedInit() {
         if (allJobsFetchInFlight) return;
         if (isTechIdle() && (Date.now() - lastAllJobsPollTs) < 30000 * IDLE_POLL_MULTIPLIER) return;
         allJobsFetchInFlight = true; lastAllJobsPollTs = Date.now();
-        fetch(`${WEB_APP_URL}?action=getAdminPipeline`)
+        fetch(`${WEB_APP_URL}?action=getAdminPipeline${etagQ_('all', allJobsCache && allJobsCache.length)}`)
         .then(res => res.json()).then(data => {
+            if(data.success && data.notModified) return;
             if(data.success) {
+                if (data.etag) _etags.all = data.etag;
                 // SAP14 location — ALL jobs regardless of status, not handed over.
                 // Only Pending jobs are assignable (see renderAllJobsPanel /
                 // assignJobToSelf); everything else is shown read-only so the
