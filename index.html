@@ -723,6 +723,7 @@
                 <div class="notif-bell-wrap">
                     <button type="button" class="btn-notif-bell" onclick="toggleNotifPanel()">🔔 <span class="notif-badge" id="notifBadge" style="display:none;">0</span></button>
                 </div>
+                <button type="button" class="btn-urgent-bell" onclick="urgTOpen()" title="Urgent orders">🚨 Urgent <span class="u-dot" id="urgTBtnDot">0</span></button>
                 <button type="button" class="btn-team-bell" onclick="openTeamPanel()">🏆 Team</button>
                 <button type="button" class="btn-salary-bell" onclick="openSalaryModal()">💰 Salary</button>
                 <button type="button" class="btn-profile-avatar" id="profileAvatarBtn" onclick="openProfileModal()" title="Profile Settings"><span class="avatar-fallback" id="profileAvatarFallback">?</span><img id="profileAvatarImg" style="display:none;"></button>
@@ -1239,6 +1240,7 @@
         allJobsPoller = setInterval(fetchAllJobsData, 30000);
         notifPoller = setInterval(fetchNotifications, 25000);
         teamStatsPoller = setInterval(fetchTeamStats, 45000);
+        if (typeof urgentTechInit === 'function') urgentTechInit();
 
         // Refreshes the 12h expiry window each time the portal is entered,
         // whether that's a brand-new login or a restored refresh.
@@ -1635,6 +1637,7 @@
             }
         });
 
+        if (typeof urgentPrioritize === 'function') filtered = urgentPrioritize(filtered); // urgent orders first, in rank order
         document.getElementById('visibleJobsCount').innerText = filtered.length;
         if(filtered.length === 0) { container.innerHTML = `<div style="text-align:center; color:var(--text-muted); padding:20px;">No matching records within this timeline window.</div>`; return; }
 
@@ -1692,6 +1695,7 @@
             });
             window.scrollTo(window.scrollX, preservedScrollY);
         }
+        if (typeof urgentSyncBadges === 'function') urgentSyncBadges();
     }
 
     function buildPriceLinesHtml(job) {
@@ -3847,6 +3851,7 @@ function iedInit() {
     function logOutSession() {
         clearSession();
         clearInterval(techQueuePoller); clearInterval(allJobsPoller); clearInterval(notifPoller); clearInterval(teamStatsPoller);
+        if (typeof urgentTechReset === 'function') urgentTechReset();
         currentTechSessionName = "";
         currentTechSessionUsername = ""; currentProfilePicUrl = ""; globalProfilePicsCache = {}; selectedProfilePicBase64 = null;
         localJobsMasterArray = [];
@@ -4641,5 +4646,242 @@ async function downloadSalaryPdf(){
     btn.disabled = false; btn.textContent = label;
 }
 </script>
+<!-- ════════════════════════════════════════════════════════════════════════
+     URGENT ORDERS (technician terminal) — added feature. Self-contained.
+     • "🚨 URGENT ORDER #01" badge on the technician's own urgent jobs (urgent jobs listed first)
+     • "🚨 Urgent" button → view the urgent list, propose changes, ask to move a job to another
+       technician. Every change is sent to the admin panel for approval before it takes effect.
+     ════════════════════════════════════════════════════════════════════════ -->
+<style>
+    .btn-urgent-bell { position: relative; background: rgba(239,71,111,0.12); color: var(--accent-red); border: 1px solid var(--accent-red); padding: 9px 12px; border-radius: 8px; cursor: pointer; font-weight: 700; font-size: 13px; }
+    .btn-urgent-bell .u-dot { display:none; position:absolute; top:-7px; right:-7px; background:#f59e0b; color:#111827; border-radius:10px; font-size:10px; font-weight:800; padding:1px 6px; }
+    .urgent-order-badge { display:inline-flex; align-items:center; gap:6px; background:linear-gradient(135deg,#ef476f,#b91c1c); color:#fff; font-weight:800; font-size:12px; letter-spacing:.4px; padding:5px 12px; border-radius:999px; margin-bottom:6px; box-shadow:0 0 12px rgba(239,71,111,.55); }
+    .job-card.is-urgent { border-color: var(--accent-red); box-shadow: 0 0 0 1px rgba(239,71,111,.35); }
+    .urgT-overlay { display:none; position:fixed; z-index:10050; inset:0; background:rgba(0,0,0,.75); align-items:flex-start; justify-content:center; overflow-y:auto; padding:5vh 12px; }
+    .urgT-box { background: var(--bg-card); color: var(--text-main); border:1px solid var(--border-color); border-radius:14px; width:100%; max-width:680px; padding:18px; }
+    .urgT-head { display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; }
+    .urgT-head h2 { margin:0; font-size:18px; }
+    .urgT-x { cursor:pointer; font-size:24px; color:var(--text-muted); line-height:1; }
+    .urgT-sec { font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.5px; color:var(--text-muted); margin:14px 0 6px; }
+    .urgT-note { font-size:12px; color:var(--text-muted); background:var(--bg-input); border:1px dashed var(--border-color); border-radius:8px; padding:8px 10px; }
+    .urgT-row { display:flex; gap:10px; align-items:center; padding:9px 10px; border:1px solid var(--accent-red); background:rgba(239,71,111,.08); border-radius:8px; margin-bottom:6px; }
+    .urgT-rank { flex-shrink:0; background:var(--accent-red); color:#fff; font-weight:800; font-size:12px; border-radius:6px; padding:4px 8px; }
+    .urgT-info { flex:1; min-width:0; font-size:13px; }
+    .urgT-info .sub { font-size:11px; color:var(--accent-red); margin-top:2px; }
+    .urgT-acts { display:flex; gap:4px; align-items:center; flex-wrap:wrap; justify-content:flex-end; }
+    .urgT-mini { border:1px solid var(--border-color); background:var(--bg-input); color:var(--text-main); border-radius:6px; padding:4px 9px; cursor:pointer; font-size:12px; font-weight:700; }
+    .urgT-mini:disabled { opacity:.35; cursor:default; }
+    .urgT-mini.danger { color:var(--accent-red); }
+    .urgT-mini.ok { background:var(--accent-green); color:#fff; border-color:var(--accent-green); }
+    .urgT-box select, .urgT-box input[type=text], .urgT-box textarea { padding:7px; border:1px solid var(--border-color); border-radius:6px; font-size:12px; background:var(--bg-input); color:var(--text-main); }
+    .urgT-add { display:flex; gap:6px; flex-wrap:wrap; }
+    .urgT-add select { flex:1; min-width:200px; }
+    .urgT-foot { display:flex; gap:8px; justify-content:flex-end; align-items:center; margin-top:12px; flex-wrap:wrap; }
+    .urgT-foot .dirty { margin-right:auto; font-size:12px; color:var(--accent-orange); font-weight:700; }
+    .urgT-primary { background:var(--accent-red); color:#fff; border:none; padding:9px 16px; border-radius:8px; cursor:pointer; font-weight:800; }
+    .urgT-primary:disabled { opacity:.45; cursor:default; }
+    .urgT-req { border:1px solid var(--border-color); border-radius:10px; padding:10px 12px; margin-bottom:8px; font-size:13px; background:var(--bg-input); }
+    .urgT-req .top { display:flex; justify-content:space-between; gap:8px; flex-wrap:wrap; font-weight:700; margin-bottom:4px; }
+    .urgT-pill { font-size:10px; font-weight:800; padding:2px 8px; border-radius:10px; text-transform:uppercase; }
+    .urgT-pill.pending { background:#f59e0b; color:#111827; } .urgT-pill.approved { background:#059669; color:#fff; } .urgT-pill.rejected { background:#dc2626; color:#fff; } .urgT-pill.cancelled { background:#64748b; color:#fff; }
+    .urgT-toast { position:fixed; left:50%; bottom:70px; transform:translateX(-50%); background:#0f172a; color:#fff; padding:10px 16px; border-radius:20px; font-size:13px; z-index:20001; box-shadow:0 4px 14px rgba(0,0,0,.4); max-width:90vw; text-align:center; }
+</style>
+
+<div class="urgT-overlay" id="urgTOverlay" onclick="if(event.target===this)urgTClose()">
+    <div class="urgT-box">
+        <div class="urgT-head"><h2>🚨 My Urgent Orders</h2><span class="urgT-x" onclick="urgTClose()">×</span></div>
+        <div id="urgTBody"></div>
+    </div>
+</div>
+
+<script>
+(function () {
+    const T = { orders: [], requests: [], draft: [], touched: false, open: false, timer: null, lastStatus: null, busy: false };
+    const $ = (id) => document.getElementById(id);
+    const esc = (s) => (s === null || s === undefined) ? '' : String(s).replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+    const same = (a, b) => String(a || '').trim().toLowerCase() === String(b || '').trim().toLowerCase();
+    const pad = (n) => String(n).padStart(2, '0');
+    const me = () => (typeof currentTechSessionName !== 'undefined' ? currentTechSessionName : '');
+    const getJson = (qs) => fetch(`${WEB_APP_URL}?${qs}`).then(r => r.json());
+    const post = (body) => fetch(WEB_APP_URL, { method: 'POST', body: JSON.stringify(body) }).then(r => r.json());
+    const jobs = () => (typeof localJobsMasterArray !== 'undefined' && Array.isArray(localJobsMasterArray)) ? localJobsMasterArray : [];
+    function toast(msg) { const d = document.createElement('div'); d.className = 'urgT-toast'; d.textContent = msg; document.body.appendChild(d); setTimeout(() => d.remove(), 4500); }
+
+    function jobInfo(n) {
+        const j = jobs().find(x => String(x.jobNum) === String(n));
+        if (j) return j;
+        const o = T.orders.find(x => String(x.jobNum) === String(n));
+        return o || { jobNum: n, itemType: '', model: '', customer: '', fault: '', status: '' };
+    }
+    const jobLine = (i) => `<b>#${esc(i.jobNum)}</b> ${esc(i.itemType)} ${i.model ? '<span style="color:var(--accent-cyan);">[' + esc(i.model) + ']</span>' : ''} <span style="color:var(--text-muted);">— ${esc(i.customer)}</span>`;
+    const approvedNums = () => T.orders.slice().sort((a, b) => a.rank - b.rank).map(o => o.jobNum);
+    const pendingList = () => T.requests.find(r => r.status === 'pending' && r.kind === 'list');
+    const pendingCount = () => T.requests.filter(r => r.status === 'pending').length;
+    const sameArr = (a, b) => a.length === b.length && a.every((v, i) => String(v) === String(b[i]));
+
+    // ── cards: badge + urgent-first ordering (called from the queue renderer) ──
+    window.urgentRankOf = function (jobNum) { const o = T.orders.find(x => String(x.jobNum) === String(jobNum)); return o ? o.rank : 0; };
+    window.urgentPrioritize = function (arr) {
+        if (!T.orders.length) return arr;
+        const withIdx = arr.map((j, i) => ({ j, i, r: window.urgentRankOf(j.jobNum) }));
+        withIdx.sort((a, b) => (a.r && b.r) ? a.r - b.r : (a.r ? -1 : (b.r ? 1 : a.i - b.i)));
+        return withIdx.map(x => x.j);
+    };
+    window.urgentSyncBadges = function () {
+        document.querySelectorAll('#queueContainer .job-card').forEach(card => {
+            const jobNum = card.id.replace('card-', '');
+            const rank = window.urgentRankOf(jobNum);
+            const title = card.querySelector('.job-id-title');
+            if (!title) return;
+            let badge = title.querySelector(':scope > .urgent-order-badge');
+            if (!rank) { if (badge) badge.remove(); card.classList.remove('is-urgent'); return; }
+            if (!badge) { badge = document.createElement('div'); badge.className = 'urgent-order-badge'; title.insertAdjacentElement('afterbegin', badge); }
+            const txt = `🚨 URGENT ORDER #${pad(rank)}`;
+            if (badge.textContent !== txt) badge.textContent = txt;
+            card.classList.add('is-urgent');
+        });
+    };
+    function rerenderQueue() { if (typeof evaluateFilterPipeline === 'function') evaluateFilterPipeline(); else window.urgentSyncBadges(); }
+
+    // ── data ───────────────────────────────────────────────────────────────
+    async function refresh() {
+        if (!me()) return;
+        const t = encodeURIComponent(me());
+        try {
+            const [o, r] = await Promise.all([getJson('action=getUrgentOrders&tech=' + t), getJson('action=getUrgentRequests&tech=' + t)]);
+            if (!o.success && !T.errShown) { T.errShown = true; toast('⚠️ Urgent orders unavailable: ' + (o.error || 'no response from server')); }
+            if (o.success) {
+                const before = JSON.stringify(T.orders.map(x => [x.jobNum, x.rank]));
+                T.orders = o.orders || [];
+                if (JSON.stringify(T.orders.map(x => [x.jobNum, x.rank])) !== before) rerenderQueue();
+            }
+            if (r.success) {
+                T.requests = r.requests || [];
+                const cur = {}; T.requests.forEach(q => cur[q.id] = q.status);
+                if (T.lastStatus) {
+                    T.requests.forEach(q => {
+                        if (T.lastStatus[q.id] === 'pending' && q.status === 'approved') toast('✅ Admin approved your urgent order request.');
+                        else if (T.lastStatus[q.id] === 'pending' && q.status === 'rejected') toast('❌ Admin rejected your urgent order request.' + (q.decisionNote ? ' “' + q.decisionNote + '”' : ''));
+                    });
+                }
+                T.lastStatus = cur;
+            }
+        } catch (e) { /* offline — keep last data */ }
+        updateBtn();
+        if (T.open) { if (!T.touched) { const p = pendingList(); T.draft = p ? p.jobNums.slice() : approvedNums(); } render(); }
+    }
+    function updateBtn() {
+        const b = $('urgTBtnDot'); if (!b) return;
+        const n = pendingCount(); b.style.display = n ? 'block' : 'none'; b.textContent = n;
+    }
+
+    // ── popup ──────────────────────────────────────────────────────────────
+    window.urgTOpen = function () {
+        T.open = true; T.touched = false;
+        const p = pendingList(); T.draft = p ? p.jobNums.slice() : approvedNums();
+        $('urgTOverlay').style.display = 'flex'; render(); refresh();
+    };
+    window.urgTClose = function () {
+        if (T.touched && !sameArr(T.draft, (pendingList() || {}).jobNums || approvedNums()) && !confirm('You have changes that were not sent to the admin. Close anyway?')) return;
+        T.open = false; T.touched = false; $('urgTOverlay').style.display = 'none';
+    };
+    function reqSummary(r) {
+        if (r.kind === 'change_tech') return `Move ${jobLine(jobInfo(r.jobNum))} → <b>${esc(r.newTech)}</b>`;
+        return r.jobNums.length ? 'New list: ' + r.jobNums.map((n, i) => `#${pad(i + 1)} ${esc(n)}`).join(' · ') : 'Clear my urgent list';
+    }
+    function render() {
+        const approved = approvedNums();
+        const pl = pendingList();
+        const basis = pl ? pl.jobNums : approved;
+        const dirty = T.touched && !sameArr(T.draft, basis);
+        const differsFromApproved = !sameArr(T.draft, approved);
+        const others = (typeof globalTechListCache !== 'undefined' ? globalTechListCache : []).filter(t => !same(t, me()));
+        const eligible = jobs().filter(j => !j.isHandedOver && !T.draft.some(n => String(n) === String(j.jobNum))).sort((a, b) => b.jobNum - a.jobNum);
+
+        const rows = T.draft.map((n, i) => {
+            const info = jobInfo(n); const isApproved = approved.some(a => String(a) === String(n));
+            return `<div class="urgT-row">
+                <span class="urgT-rank">#${pad(i + 1)}</span>
+                <div class="urgT-info">${jobLine(info)}${isApproved ? '' : ' <span class="urgT-pill pending">new</span>'}<div class="sub">⚠️ ${esc(info.fault) || 'No fault noted'} · ${esc(info.status)}</div></div>
+                <div class="urgT-acts">
+                    <button class="urgT-mini" data-u="up" data-i="${i}" ${i === 0 ? 'disabled' : ''}>▲</button>
+                    <button class="urgT-mini" data-u="down" data-i="${i}" ${i === T.draft.length - 1 ? 'disabled' : ''}>▼</button>
+                    <button class="urgT-mini danger" data-u="rm" data-i="${i}" title="Remove from my urgent list">✕</button>
+                </div>
+            </div>
+            ${isApproved ? `<div class="urgT-acts" style="margin:-2px 0 8px;">
+                <select id="urgTMove-${esc(n)}"><option value="">Change technician…</option>${others.map(t => `<option value="${esc(t)}">${esc(t)}</option>`).join('')}</select>
+                <button class="urgT-mini" data-u="move" data-job="${esc(n)}">📨 Request change</button>
+            </div>` : ''}`;
+        }).join('');
+
+        const recent = T.requests.filter(r => r.status !== 'pending').slice(0, 5);
+        $('urgTBody').innerHTML = `
+            <div class="urgT-note">Any change you make here is sent to the admin panel as a request. Your urgent list only changes after the admin approves it.</div>
+            ${pl ? `<div class="urgT-note" style="margin-top:8px; border-color:var(--accent-orange); color:var(--accent-orange);">⏳ A list change is waiting for admin approval (sent ${esc(pl.createdAtText)}). You can edit and resubmit — it will replace the waiting request.</div>` : ''}
+            <div class="urgT-sec">Urgent list (top = most urgent)</div>
+            ${rows || '<div class="urgT-note" style="text-align:center;">No urgent orders yet.</div>'}
+            <div class="urgT-sec">Add a job to my urgent list</div>
+            <div class="urgT-add">
+                <select id="urgTAddSel">${eligible.map(j => `<option value="${esc(j.jobNum)}">#${esc(j.jobNum)} · ${esc(j.itemType)} ${esc(j.model)} · ${esc(j.customer)} (${esc(j.status)})</option>`).join('') || '<option value="">No more active jobs</option>'}</select>
+                <button class="urgT-mini ok" data-u="add">＋ Add</button>
+            </div>
+            <div class="urgT-sec">Note for admin (optional)</div>
+            <input type="text" id="urgTNote" maxlength="300" placeholder="Why is this urgent?" style="width:100%;">
+            <div class="urgT-foot">
+                ${dirty ? '<span class="dirty">● Not sent yet</span>' : ''}
+                <button class="urgT-primary" data-u="submit" ${(differsFromApproved && dirty) ? '' : 'disabled'}>📨 Send for admin approval</button>
+            </div>
+            ${T.requests.filter(r => r.status === 'pending').length ? `<div class="urgT-sec">Waiting for approval</div>${T.requests.filter(r => r.status === 'pending').map(r => `
+                <div class="urgT-req"><div class="top"><span>${r.kind === 'change_tech' ? '👤 Change technician' : '📋 List change'}</span><span class="urgT-pill pending">pending</span></div>
+                <div>${reqSummary(r)}</div>
+                <div style="text-align:right; margin-top:6px;"><button class="urgT-mini danger" data-u="cancel" data-id="${r.id}">Withdraw</button></div></div>`).join('')}` : ''}
+            ${recent.length ? `<div class="urgT-sec">Recent decisions</div>${recent.map(r => `
+                <div class="urgT-req"><div class="top"><span>${r.kind === 'change_tech' ? '👤 Change technician' : '📋 List change'}</span><span class="urgT-pill ${esc(r.status)}">${esc(r.status)}</span></div>
+                <div>${reqSummary(r)}</div>${r.decisionNote ? `<div style="font-size:12px; color:var(--text-muted); margin-top:4px;">“${esc(r.decisionNote)}”</div>` : ''}</div>`).join('')}` : ''}`;
+    }
+    $('urgTBody').addEventListener('click', async (ev) => {
+        const b = ev.target.closest('[data-u]'); if (!b || b.disabled) return;
+        const act = b.getAttribute('data-u'); const i = Number(b.getAttribute('data-i'));
+        const note = ($('urgTNote') || {}).value || '';
+        if (act === 'up' && i > 0) { [T.draft[i - 1], T.draft[i]] = [T.draft[i], T.draft[i - 1]]; T.touched = true; render(); }
+        else if (act === 'down' && i < T.draft.length - 1) { [T.draft[i + 1], T.draft[i]] = [T.draft[i], T.draft[i + 1]]; T.touched = true; render(); }
+        else if (act === 'rm') { T.draft.splice(i, 1); T.touched = true; render(); }
+        else if (act === 'add') { const v = $('urgTAddSel').value; if (v) { T.draft.push(Number(v)); T.touched = true; render(); } }
+        else if (act === 'submit') { await send({ kind: 'list', jobNums: T.draft, note }, 'Sent to admin for approval.'); T.touched = false; }
+        else if (act === 'move') {
+            const job = b.getAttribute('data-job'); const sel = $('urgTMove-' + job); const target = sel ? sel.value : '';
+            if (!target) { toast('Choose a technician first.'); return; }
+            if (!confirm(`Ask admin to move job #${job} to ${target}?`)) return;
+            await send({ kind: 'change_tech', jobNum: Number(job), newTech: target, note }, 'Change request sent to admin.');
+        }
+        else if (act === 'cancel') {
+            const d = await post({ action: 'cancelUrgentRequest', requester: currentTechSessionUsername, requestId: Number(b.getAttribute('data-id')) });
+            toast(d.success ? 'Request withdrawn.' : (d.error || 'Could not withdraw.')); T.touched = false; refresh();
+        }
+    });
+    async function send(body, okMsg) {
+        if (T.busy) return; T.busy = true;
+        try {
+            const d = await post(Object.assign({ action: 'requestUrgentChange', requester: currentTechSessionUsername }, body));
+            if (!d.success) throw new Error(d.error || 'Request failed');
+            toast('✅ ' + okMsg); await refresh();
+        } catch (e) { toast('⚠️ ' + e.message); }
+        T.busy = false;
+    }
+
+    // ── lifecycle ────────────────────────────────────────────────────────────
+    window.urgentTechInit = function () {
+        clearInterval(T.timer); T.orders = []; T.requests = []; T.lastStatus = null; T.touched = false;
+        updateBtn(); refresh();
+        T.timer = setInterval(() => { if (document.visibilityState === 'visible') refresh(); }, 20000);
+    };
+    window.urgentTechReset = function () {
+        clearInterval(T.timer); T.orders = []; T.requests = []; T.lastStatus = null; T.open = false;
+        $('urgTOverlay').style.display = 'none'; updateBtn();
+    };
+})();
+</script>
+
 </body>
 </html>
