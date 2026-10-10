@@ -4884,6 +4884,9 @@ async function downloadSalaryPdf(){
         clearInterval(T.timer); T.orders = []; T.requests = []; T.lastStatus = null; T.open = false;
         $('urgTOverlay').style.display = 'none'; updateBtn();
     };
+    // A restored session (page refresh) calls enterPortal() before this block has loaded,
+    // so start the urgent checks here if the technician is already signed in.
+    if (me()) window.urgentTechInit();
 })();
 </script>
 
