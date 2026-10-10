@@ -4744,12 +4744,12 @@ async function downloadSalaryPdf(){
     function rerenderQueue() { if (typeof evaluateFilterPipeline === 'function') evaluateFilterPipeline(); else window.urgentSyncBadges(); }
 
     // ── data ───────────────────────────────────────────────────────────────
-    async function refresh() {
+    async function refresh(ordersOnly) {
         if (!me()) return;
         const t = encodeURIComponent(me());
         try {
-            const [o, r] = await Promise.all([getJson('action=getUrgentOrders&tech=' + t), getJson('action=getUrgentRequests&tech=' + t)]);
-            if (!o.success && !T.errShown) { T.errShown = true; toast('⚠️ Urgent orders unavailable: ' + (o.error || 'no response from server')); }
+            const [o, r] = await Promise.all([getJson('action=getUrgentOrders&tech=' + t), ordersOnly ? Promise.resolve({ success: false, skip: true }) : getJson('action=getUrgentRequests&tech=' + t)]);
+            if (!o.success && !T.errShown && !o.skip) { T.errShown = true; toast('⚠️ Urgent orders unavailable: ' + (o.error || 'no response from server')); }
             if (o.success) {
                 const before = JSON.stringify(T.orders.map(x => [x.jobNum, x.rank]));
                 T.orders = o.orders || [];
@@ -4874,7 +4874,11 @@ async function downloadSalaryPdf(){
     window.urgentTechInit = function () {
         clearInterval(T.timer); T.orders = []; T.requests = []; T.lastStatus = null; T.touched = false;
         updateBtn(); refresh();
-        T.timer = setInterval(() => { if (document.visibilityState === 'visible') refresh(); }, 20000);
+        // Urgent list is checked every 5s (one tiny request) so a newly granted urgent order highlights almost instantly;
+        // approval requests are re-checked every 4th tick (~20s) and whenever the tab regains focus.
+        let tick = 0;
+        T.timer = setInterval(() => { if (document.visibilityState === 'visible') refresh(++tick % 4 !== 0); }, 5000);
+        if (!T.focusBound) { T.focusBound = true; document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && me()) refresh(); }); }
     };
     window.urgentTechReset = function () {
         clearInterval(T.timer); T.orders = []; T.requests = []; T.lastStatus = null; T.open = false;
