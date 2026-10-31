@@ -735,7 +735,7 @@
                 <div class="notif-bell-wrap">
                     <button type="button" class="btn-notif-bell" onclick="toggleNotifPanel()">🔔 <span class="notif-badge" id="notifBadge" style="display:none;">0</span></button>
                 </div>
-                <button type="button" class="btn-urgent-bell" onclick="urgTOpen()" title="Urgent orders">🚨 Urgent <span class="u-dot" id="urgTBtnDot">0</span></button>
+                <button type="button" class="btn-urgent-bell" onclick="urgTOpen()" title="Urgent orders" style="display:none">🚨 Urgent <span class="u-dot" id="urgTBtnDot">0</span></button>
                 <button type="button" class="btn-team-bell" onclick="openTeamPanel()">🏆 Team</button>
                 <button type="button" class="btn-salary-bell" onclick="openSalaryModal()">💰 Salary</button>
                 <button type="button" class="btn-profile-avatar" id="profileAvatarBtn" onclick="openProfileModal()" title="Profile Settings"><span class="avatar-fallback" id="profileAvatarFallback">?</span><img id="profileAvatarImg" style="display:none;"></button>
@@ -4886,6 +4886,7 @@ async function downloadSalaryPdf(){
     // ── lifecycle ────────────────────────────────────────────────────────────
     window.urgentTechInit = function () {
         clearInterval(T.timer); T.orders = []; T.requests = []; T.lastStatus = null; T.touched = false;
+        return; // URGENT ORDERS DISABLED (usage reduction): no 5s polling, no API calls
         updateBtn(); refresh();
         // Urgent list is checked every 5s (one tiny request) so a newly granted urgent order highlights almost instantly;
         // approval requests are re-checked every 4th tick (~20s) and whenever the tab regains focus.
