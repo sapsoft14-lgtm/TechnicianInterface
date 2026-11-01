@@ -1148,12 +1148,12 @@
             return;
         }
         if (!currentTechSessionName) return; // not logged in yet — nothing to resume
-        fetchTechWorkQueue(); fetchAllJobsData(); fetchNotifications(); fetchTeamStats();
+        pollBundle(true);
         clearInterval(techQueuePoller); clearInterval(allJobsPoller); clearInterval(notifPoller); clearInterval(teamStatsPoller);
-        techQueuePoller = setInterval(fetchTechWorkQueue, 8000);
-        allJobsPoller = setInterval(fetchAllJobsData, 30000);
-        notifPoller = setInterval(fetchNotifications, 25000);
-        teamStatsPoller = setInterval(fetchTeamStats, 45000);
+        techQueuePoller = setInterval(pollBundle, BUNDLE_POLL_MS);
+        /* merged into pollBundle */
+        /* merged into pollBundle */
+        /* merged into pollBundle */
     });
     let currentSelectedStatusFilter = "ALL"; let metricsChartInstance = null;
     let searchIsAutofilled = false; // true while the search box just shows the tech's auto-filled name, not a real search
@@ -1247,11 +1247,11 @@
         searchIsAutofilled = true;
         updateProfileAvatarUI();
         document.getElementById('loginSection').style.display = "none"; document.getElementById('portalSection').style.display = "block";
-        setDefaultDateConstraints(); initMetricsChart(); loadGlobalDropdownData(); fetchTechWorkQueue(); fetchAllJobsData(); fetchNotifications(); initDesktopNotificationsDefault(); fetchTeamStats();
-        techQueuePoller = setInterval(fetchTechWorkQueue, 8000);
-        allJobsPoller = setInterval(fetchAllJobsData, 30000);
-        notifPoller = setInterval(fetchNotifications, 25000);
-        teamStatsPoller = setInterval(fetchTeamStats, 45000);
+        setDefaultDateConstraints(); initMetricsChart(); loadGlobalDropdownData(); pollBundle(true); initDesktopNotificationsDefault();
+        techQueuePoller = setInterval(pollBundle, BUNDLE_POLL_MS);
+        /* merged into pollBundle */
+        /* merged into pollBundle */
+        /* merged into pollBundle */
         if (typeof urgentTechInit === 'function') urgentTechInit();
 
         // Refreshes the 12h expiry window each time the portal is entered,
@@ -1481,7 +1481,78 @@
         }).finally(() => { techQueueFetchInFlight = false; });
     }
 
-    function manualJobQueueRefreshTrigger() {
+// ── Single combined poller (Edge Function invocation reduction) ─────────
+    // Replaces 4 separate timers (queue 8s / notifications 25s / all-jobs 30s /
+    // team stats 45s) with ONE request every 30s via action=getTechBundle.
+    // Heavy parts are included only now and then: all-jobs every ~2 min,
+    // team stats every ~5 min. Idle tabs back off automatically.
+    const BUNDLE_POLL_MS = 30000;
+    const BUNDLE_ALLJOBS_EVERY_MS = 120000;
+    const BUNDLE_TEAM_EVERY_MS = 300000;
+    let bundleInFlight = false, lastBundleTs = 0, lastBundleAllTs = 0, lastBundleTeamTs = 0;
+
+    function applyBundle(data) {
+        try {
+            const q = data.queue;
+            if (q && q.success && Array.isArray(q.jobs)) { localJobsMasterArray = q.jobs; updatePendingNewsBar(localJobsMasterArray); evaluateFilterPipeline(); }
+        } catch (e) {}
+        try {
+            const n = data.notif;
+            if (n && n.success && Array.isArray(n.notifications)) {
+                notifFeedCache = n.notifications;
+                notifHasMore = typeof n.hasMore === 'boolean' ? n.hasMore : (n.notifications.length === NOTIF_PAGE_SIZE);
+                renderNotifPanel();
+                maybeFireDesktopNotifications(notifFeedCache);
+            }
+        } catch (e) {}
+        try {
+            const a = data.all;
+            if (a && a.success && Array.isArray(a.jobs)) {
+                allJobsCache = a.jobs.filter(j => !j.isHandedOver && j.workshop === 'SAP -  Shop 14');
+                renderAllJobsPanel();
+            }
+        } catch (e) {}
+        try {
+            const t = data.team;
+            if (t && t.success) {
+                leaderboardCache = t.leaderboard || [];
+                myStatsCache = t.myStats || null;
+                kudosFeedCache = t.kudos || [];
+                checkForNewKudosPopups(kudosFeedCache);
+                renderMyStats();
+                renderLeaderboard();
+                renderKudosFeed();
+                populateKudosToSelect();
+            }
+        } catch (e) {}
+    }
+
+    function pollBundle(force) {
+        if (!currentTechSessionName || document.hidden) return;
+        if (bundleInFlight) return;
+        const now = Date.now();
+        if (!force && isTechIdle() && (now - lastBundleTs) < BUNDLE_POLL_MS * IDLE_POLL_MULTIPLIER) return;
+        const ae = document.activeElement;
+        const typing = !!(ae && (ae.tagName === "TEXTAREA" || ae.tagName === "INPUT" || ae.tagName === "SELECT"));
+        const parts = ['notif'];
+        // Same rule as before: don't swap the queue under a technician who is typing
+        // (unless there is nothing on screen yet).
+        if (!typing || !localJobsMasterArray || !localJobsMasterArray.length) parts.push('queue');
+        if (force || now - lastBundleAllTs >= BUNDLE_ALLJOBS_EVERY_MS) { parts.push('all'); lastBundleAllTs = now; }
+        if (force || now - lastBundleTeamTs >= BUNDLE_TEAM_EVERY_MS) { parts.push('team'); lastBundleTeamTs = now; }
+        const key = parts.join(',');
+        const etagKey = 'bundle:' + key;
+        const etagParam = _etags[etagKey] ? `&etag=${encodeURIComponent(_etags[etagKey])}` : '';
+        bundleInFlight = true; lastBundleTs = now;
+        fetch(`${WEB_APP_URL}?action=getTechBundle&techName=${encodeURIComponent(currentTechSessionName)}&parts=${key}&notifLimit=${NOTIF_PAGE_SIZE}${etagParam}`)
+        .then(res => res.json()).then(data => {
+            if (!data || !data.success || data.notModified) return;
+            applyBundle(data);
+            if (data.etag) _etags[etagKey] = data.etag;
+        }).catch(() => {}).finally(() => { bundleInFlight = false; });
+    }
+
+        function manualJobQueueRefreshTrigger() {
         clearInterval(techQueuePoller);
         const refreshBtn = document.querySelector('.btn-refresh-queue');
         refreshBtn.disabled = true;
@@ -1499,11 +1570,11 @@
             refreshBtn.disabled = false;
             pulseBtnSuccess(refreshBtn);
             refreshBtn.innerHTML = "🔄 Refresh Task Queue";
-            techQueuePoller = setInterval(fetchTechWorkQueue, 8000);
+            techQueuePoller = setInterval(pollBundle, BUNDLE_POLL_MS);
         }).catch(() => {
             refreshBtn.disabled = false;
             refreshBtn.innerHTML = "🔄 Refresh Task Queue";
-            techQueuePoller = setInterval(fetchTechWorkQueue, 8000);
+            techQueuePoller = setInterval(pollBundle, BUNDLE_POLL_MS);
         });
     }
 
@@ -3797,12 +3868,12 @@ function iedInit() {
                     if (priceLines && job) priceLines.innerHTML = buildPriceLinesHtml(job);
                 }
 
-                setTimeout(() => { document.getElementById(`body-${jobNum}`).style.display = "none"; document.getElementById(`card-${jobNum}`).classList.remove('is-open'); openCardStateTracker = null; endBtnBusy(submitBtn); fetchTechWorkQueue(); techQueuePoller = setInterval(fetchTechWorkQueue, 8000); }, 1200);
+                setTimeout(() => { document.getElementById(`body-${jobNum}`).style.display = "none"; document.getElementById(`card-${jobNum}`).classList.remove('is-open'); openCardStateTracker = null; endBtnBusy(submitBtn); fetchTechWorkQueue(); techQueuePoller = setInterval(pollBundle, BUNDLE_POLL_MS); }, 1200);
             } else {
                 endBtnBusy(submitBtn);
-                alertBox.style.background = "rgba(239,71,111,0.2)"; alertBox.style.color = "var(--accent-red)"; alertBox.innerText = "❌ Error: " + (data.error || "Update failed."); techQueuePoller = setInterval(fetchTechWorkQueue, 8000);
+                alertBox.style.background = "rgba(239,71,111,0.2)"; alertBox.style.color = "var(--accent-red)"; alertBox.innerText = "❌ Error: " + (data.error || "Update failed."); techQueuePoller = setInterval(pollBundle, BUNDLE_POLL_MS);
             }
-        }).catch(() => { endBtnBusy(submitBtn); alertBox.style.background = "rgba(239,71,111,0.2)"; alertBox.style.color = "var(--accent-red)"; alertBox.innerText = "❌ Network error. Please retry."; techQueuePoller = setInterval(fetchTechWorkQueue, 8000); });
+        }).catch(() => { endBtnBusy(submitBtn); alertBox.style.background = "rgba(239,71,111,0.2)"; alertBox.style.color = "var(--accent-red)"; alertBox.innerText = "❌ Network error. Please retry."; techQueuePoller = setInterval(pollBundle, BUNDLE_POLL_MS); });
     }
 
     function executeTicketHandoverRoute(event, jobNum) {
@@ -3816,12 +3887,12 @@ function iedInit() {
             if (data.success) {
                 pulseBtnSuccess(submitBtn);
                 alertBox.style.background = "rgba(255,159,28,0.2)"; alertBox.innerText = `🚀 Handed over to ${targetTech}!`;
-                setTimeout(() => { document.getElementById(`card-${jobNum}`).remove(); openCardStateTracker = null; fetchTechWorkQueue(); techQueuePoller = setInterval(fetchTechWorkQueue, 8000); }, 1200);
+                setTimeout(() => { document.getElementById(`card-${jobNum}`).remove(); openCardStateTracker = null; fetchTechWorkQueue(); techQueuePoller = setInterval(pollBundle, BUNDLE_POLL_MS); }, 1200);
             } else {
                 endBtnBusy(submitBtn);
-                alertBox.style.background = "rgba(239,71,111,0.2)"; alertBox.style.color = "var(--accent-red)"; alertBox.innerText = "❌ Error: " + (data.error || "Handover failed."); techQueuePoller = setInterval(fetchTechWorkQueue, 8000);
+                alertBox.style.background = "rgba(239,71,111,0.2)"; alertBox.style.color = "var(--accent-red)"; alertBox.innerText = "❌ Error: " + (data.error || "Handover failed."); techQueuePoller = setInterval(pollBundle, BUNDLE_POLL_MS);
             }
-        }).catch(() => { endBtnBusy(submitBtn); alertBox.style.background = "rgba(239,71,111,0.2)"; alertBox.style.color = "var(--accent-red)"; alertBox.innerText = "❌ Network error. Please retry."; techQueuePoller = setInterval(fetchTechWorkQueue, 8000); });
+        }).catch(() => { endBtnBusy(submitBtn); alertBox.style.background = "rgba(239,71,111,0.2)"; alertBox.style.color = "var(--accent-red)"; alertBox.innerText = "❌ Network error. Please retry."; techQueuePoller = setInterval(pollBundle, BUNDLE_POLL_MS); });
     }
 
     function submitSerialModelEdit(event, jobNum) {
@@ -4966,20 +5037,22 @@ async function downloadSalaryPdf(){
     const item={jobNum:jobNum,kind:kind,t:Date.now()};
     send(item).then(d=>{ applyServer(jobNum,d.counts); }).catch(()=>{ const a=pend(); a.push(item); setPend(a); });
   }
-  let syncing=false;
+  let syncing=false; const tpSeen={}, TP_TTL=10*60*1000;
   function sync(){
     if(syncing || typeof WEB_APP_URL==='undefined') return; syncing=true;
     const flush=async()=>{
       let a=pend();
       while(a.length){ try{ await send(a[0]); a.shift(); setPend(a); }catch(e){ break; } }
-      const nums=[...new Set([...document.querySelectorAll('.tp-bar')].map(e=>e.id.replace('tpbar-','')))];
+      const nowTs=Date.now();
+      const nums=[...new Set([...document.querySelectorAll('.tp-bar')].map(e=>e.id.replace('tpbar-','')))].filter(n=>!tpSeen[n]||nowTs-tpSeen[n]>TP_TTL);
       if(!nums.length) return;
+      nums.forEach(n=>{ tpSeen[n]=nowTs; });
       const d=await fetch(WEB_APP_URL+'?action=getTestPrintCounts&jobNums='+nums.join(',')).then(r=>r.json());
       if(d.success) Object.keys(d.counts||{}).forEach(k=>applyServer(Number(k),d.counts[k]));
     };
     flush().catch(()=>{}).finally(()=>{syncing=false;});
   }
-  setInterval(sync,15000); setTimeout(sync,3000);
+  setInterval(sync,300000); setTimeout(sync,3000);
   new MutationObserver(()=>{ clearTimeout(window.__tpT); window.__tpT=setTimeout(sync,800); }).observe(document.body,{childList:true,subtree:true});
 
   window.tpIsPrinterJob = function(job){ return /printer/i.test(String((job&&job.itemType)||'')); };
